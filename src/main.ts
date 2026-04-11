@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { loadConfig, saveConfig } from "./config";
-import { testConnection } from "./azdo";
+import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, type SelectedBoard } from "./config";
+import { testConnection, fetchAvailableBoards } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -14,8 +14,8 @@ function createWindow() {
 
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1024,
+    height: 768,
     frame: false,
     titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
@@ -33,7 +33,7 @@ function createWindow() {
   }
 
   // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  //mainWindow.webContents.openDevTools();
 }
 
 // Window control IPC handlers
@@ -57,12 +57,32 @@ ipcMain.on("window:close", () => {
 
 // Settings IPC handlers
 ipcMain.handle("settings:load", () => {
-  return loadConfig();
+  const config = loadConfig();
+  return { ...config, selectedBoards: loadSelectedBoards() };
 });
 
 ipcMain.handle("settings:saveAndTest", async (_, { orgUrl, pat }: { orgUrl: string; pat: string }) => {
   saveConfig({ orgUrl, pat });
   return testConnection({ orgUrl, pat });
+});
+
+// Boards IPC handlers
+ipcMain.handle("boards:getAvailable", async () => {
+  const { orgUrl, pat } = loadConfig();
+  if (!orgUrl || !pat) {
+    return { error: "NO_CREDENTIALS" };
+  }
+  try {
+    const boards = await fetchAvailableBoards({ orgUrl, pat });
+    return { boards };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: message };
+  }
+});
+
+ipcMain.handle("boards:saveSelected", (_, boards: SelectedBoard[]) => {
+  saveSelectedBoards(boards);
 });
 
 // This method will be called when Electron has finished

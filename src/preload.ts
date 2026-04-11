@@ -8,6 +8,8 @@ const api: ElectronAPI = {
     close: () => ipcRenderer.send("window:close"),
     loadSettings: () => ipcRenderer.invoke("settings:load"),
     saveAndTestSettings: (args) => ipcRenderer.invoke("settings:saveAndTest", args),
+    getAvailableBoards: () => ipcRenderer.invoke("boards:getAvailable"),
+    saveSelectedBoards: (boards) => ipcRenderer.invoke("boards:saveSelected", boards),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

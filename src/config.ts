@@ -2,9 +2,19 @@ import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 
+export interface SelectedBoard {
+    projectId: string;
+    projectName: string;
+    teamId: string;
+    teamName: string;
+    boardId: string;
+    boardName: string;
+}
+
 interface ConfigFile {
     orgUrl?: string;
     encryptedPat?: string;
+    selectedBoards?: SelectedBoard[];
 }
 
 export interface AppConfig {
@@ -28,6 +38,11 @@ function readConfigFile(): ConfigFile {
         console.warn("[config] Failed to parse config.json — treating as empty.");
         return {};
     }
+}
+
+function writeConfigFile(file: ConfigFile): void {
+    const configPath = getConfigPath();
+    fs.writeFileSync(configPath, JSON.stringify(file, null, 2), "utf-8");
 }
 
 export function loadConfig(): AppConfig {
@@ -65,7 +80,13 @@ export function saveConfig({ orgUrl, pat }: { orgUrl: string; pat: string }): vo
         encryptedPat = Buffer.from(pat, "utf-8").toString("base64");
     }
 
-    const configPath = getConfigPath();
-    const file: ConfigFile = { orgUrl, encryptedPat };
-    fs.writeFileSync(configPath, JSON.stringify(file, null, 2), "utf-8");
+    writeConfigFile({ ...readConfigFile(), orgUrl, encryptedPat });
+}
+
+export function loadSelectedBoards(): SelectedBoard[] {
+    return readConfigFile().selectedBoards ?? [];
+}
+
+export function saveSelectedBoards(boards: SelectedBoard[]): void {
+    writeConfigFile({ ...readConfigFile(), selectedBoards: boards });
 }
