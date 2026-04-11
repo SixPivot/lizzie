@@ -1,0 +1,107 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "forge.config.ts"
+      - "vite.*.config.ts"
+      - "postcss.config.mjs"
+      - "tsconfig.json"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Make
+        run: npm run make
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-windows
+          path: out/make/**
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Make
+        run: npm run make
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos
+          path: out/make/**
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libnotify-dev \
+            libnss3 \
+            libxss1 \
+            libasound2 \
+            fakeroot \
+            dpkg \
+            rpm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm run test --if-present
+
+      - name: Make
+        run: npm run make
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-linux
+          path: out/make/**
+          if-no-files-found: error
