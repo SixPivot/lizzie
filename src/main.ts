@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
+import { loadConfig, saveConfig } from "./config";
+import { testConnection } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -51,6 +53,16 @@ ipcMain.on("window:maximise", () => {
 
 ipcMain.on("window:close", () => {
   BrowserWindow.getFocusedWindow()?.close();
+});
+
+// Settings IPC handlers
+ipcMain.handle("settings:load", () => {
+  return loadConfig();
+});
+
+ipcMain.handle("settings:saveAndTest", async (_, { orgUrl, pat }: { orgUrl: string; pat: string }) => {
+  saveConfig({ orgUrl, pat });
+  return testConnection({ orgUrl, pat });
 });
 
 // This method will be called when Electron has finished

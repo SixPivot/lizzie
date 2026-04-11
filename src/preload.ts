@@ -6,6 +6,8 @@ const api: ElectronAPI = {
     minimise: () => ipcRenderer.send("window:minimise"),
     maximise: () => ipcRenderer.send("window:maximise"),
     close: () => ipcRenderer.send("window:close"),
+    loadSettings: () => ipcRenderer.invoke("settings:load"),
+    saveAndTestSettings: (args) => ipcRenderer.invoke("settings:saveAndTest", args),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

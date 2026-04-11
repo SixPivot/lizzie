@@ -1,7 +1,13 @@
 import { create } from "zustand";
 
-// Thin store shell — establishes the Zustand pattern for future features.
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
-interface AppState {}
+interface AppState {
+    orgUrl: string | null;
+    pat: string | null;
+    setAzDoCredentials: (orgUrl: string, pat: string) => void;
+}
 
-export const useAppStore = create<AppState>()(() => ({}));
+export const useAppStore = create<AppState>()((set) => ({
+    orgUrl: null,
+    pat: null,
+    setAzDoCredentials: (orgUrl, pat) => set({ orgUrl, pat }),
+}));
