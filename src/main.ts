@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 
@@ -8,10 +8,14 @@ if (started) {
 }
 
 function createWindow() {
+  const isMac = process.platform === "darwin";
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
+    frame: false,
+    titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
@@ -29,6 +33,25 @@ function createWindow() {
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
 }
+
+// Window control IPC handlers
+ipcMain.on("window:minimise", () => {
+  BrowserWindow.getFocusedWindow()?.minimize();
+});
+
+ipcMain.on("window:maximise", () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return;
+  if (win.isMaximized()) {
+    win.unmaximize();
+  } else {
+    win.maximize();
+  }
+});
+
+ipcMain.on("window:close", () => {
+  BrowserWindow.getFocusedWindow()?.close();
+});
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
