@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, screen } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, type SelectedBoard } from "./config";
+import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadWindowBounds, saveWindowBounds, type SelectedBoard } from "./config";
 import { testConnection, fetchAvailableBoards } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -12,15 +12,56 @@ if (started) {
 function createWindow() {
   const isMac = process.platform === "darwin";
 
+  const defaultWidth = 1024;
+  const defaultHeight = 768;
+
+  const savedBounds = loadWindowBounds();
+  let restoredBounds: { x: number; y: number; width: number; height: number } | null = null;
+
+  if (savedBounds) {
+    const displays = screen.getAllDisplays();
+    const centerX = savedBounds.x + savedBounds.width / 2;
+    const centerY = savedBounds.y + savedBounds.height / 2;
+    const isOnScreen = displays.some(({ bounds }) =>
+      centerX >= bounds.x && centerX <= bounds.x + bounds.width &&
+      centerY >= bounds.y && centerY <= bounds.y + bounds.height
+    );
+    if (isOnScreen) {
+      restoredBounds = savedBounds;
+    }
+  }
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 768,
+    width: restoredBounds?.width ?? defaultWidth,
+    height: restoredBounds?.height ?? defaultHeight,
+    ...(restoredBounds ? { x: restoredBounds.x, y: restoredBounds.y } : {}),
     frame: false,
     titleBarStyle: isMac ? "hiddenInset" : "default",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
+  });
+
+  let saveBoundsTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleSaveBounds() {
+    if (saveBoundsTimer) clearTimeout(saveBoundsTimer);
+    saveBoundsTimer = setTimeout(() => {
+      if (!mainWindow.isDestroyed() && !mainWindow.isMinimized() && !mainWindow.isMaximized()) {
+        saveWindowBounds(mainWindow.getBounds());
+      }
+    }, 500);
+  }
+
+  mainWindow.on("move", scheduleSaveBounds);
+  mainWindow.on("resize", scheduleSaveBounds);
+
+  mainWindow.on("close", () => {
+    if (saveBoundsTimer) clearTimeout(saveBoundsTimer);
+    if (!mainWindow.isMinimized()) {
+      saveWindowBounds(mainWindow.getNormalBounds());
+    }
   });
 
   // and load the index.html of the app.

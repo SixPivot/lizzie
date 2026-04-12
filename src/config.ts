@@ -11,10 +11,18 @@ export interface SelectedBoard {
     boardName: string;
 }
 
+interface WindowBounds {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
 interface ConfigFile {
     orgUrl?: string;
     encryptedPat?: string;
     selectedBoards?: SelectedBoard[];
+    windowBounds?: WindowBounds;
 }
 
 export interface AppConfig {
@@ -89,4 +97,12 @@ export function loadSelectedBoards(): SelectedBoard[] {
 
 export function saveSelectedBoards(boards: SelectedBoard[]): void {
     writeConfigFile({ ...readConfigFile(), selectedBoards: boards });
+}
+
+export function loadWindowBounds(): WindowBounds | null {
+    return readConfigFile().windowBounds ?? null;
+}
+
+export function saveWindowBounds(bounds: WindowBounds): void {
+    writeConfigFile({ ...readConfigFile(), windowBounds: bounds });
 }
