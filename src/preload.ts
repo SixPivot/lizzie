@@ -10,6 +10,9 @@ const api: ElectronAPI = {
     saveAndTestSettings: (args) => ipcRenderer.invoke("settings:saveAndTest", args),
     getAvailableBoards: () => ipcRenderer.invoke("boards:getAvailable"),
     saveSelectedBoards: (boards) => ipcRenderer.invoke("boards:saveSelected", boards),
+    getBoardColumnsForSelected: () => ipcRenderer.invoke("boards:getBoardColumnsForSelected"),
+    loadCombinedBoardColumns: () => ipcRenderer.invoke("combinedBoard:loadColumns"),
+    saveCombinedBoardColumns: (columns) => ipcRenderer.invoke("combinedBoard:saveColumns", columns),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

@@ -1,4 +1,14 @@
 import * as azdev from "azure-devops-node-api";
+import type { SelectedBoard } from "./config";
+
+export interface BoardColumnInfo {
+    boardId: string;
+    boardName: string;
+    projectId: string;
+    projectName: string;
+    columnId: string;
+    columnName: string;
+}
 
 export interface ConnectionTestResult {
     success: boolean;
@@ -122,4 +132,50 @@ export async function fetchAvailableBoards({
         if (projectCompare !== 0) return projectCompare;
         return a.boardName.localeCompare(b.boardName);
     });
+}
+
+export async function fetchBoardColumns({
+    orgUrl,
+    pat,
+    selectedBoards,
+}: {
+    orgUrl: string;
+    pat: string;
+    selectedBoards: SelectedBoard[];
+}): Promise<BoardColumnInfo[]> {
+    const authHandler = azdev.getPersonalAccessTokenHandler(pat);
+    const connection = new azdev.WebApi(orgUrl, authHandler);
+    const workApi = await connection.getWorkApi();
+
+    const columnsByBoard = await Promise.all(
+        selectedBoards.map(async (board) => {
+            try {
+                const teamContext = {
+                    project: board.projectName,
+                    projectId: board.projectId,
+                    team: board.teamName,
+                    teamId: board.teamId,
+                };
+                const columns = await workApi.getBoardColumns(teamContext, board.boardId);
+                return columns
+                    .filter((c) => c.id && c.name)
+                    .map((c) => ({
+                        boardId: board.boardId,
+                        boardName: board.boardName,
+                        projectId: board.projectId,
+                        projectName: board.projectName,
+                        teamId: board.teamId,
+                        teamName: board.teamName,
+                        columnId: c.id!,
+                        columnName: c.name!,
+                    }));
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.warn(`[azdo] Skipping columns for board "${board.boardName}" in project "${board.projectName}": ${message}`);
+                return [];
+            }
+        })
+    );
+
+    return columnsByBoard.flat();
 }

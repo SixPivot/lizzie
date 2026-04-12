@@ -115,12 +115,16 @@ function SortableBoardItem({ board, isStale, onRemove }: SortableBoardItemProps)
 
 export function BoardsSection() {
     const setStoreSelectedBoards = useAppStore((s) => s.setSelectedBoards);
+    const setBoardColumns = useAppStore((s) => s.setBoardColumns);
+    const storeCombinedBoardColumns = useAppStore((s) => s.combinedBoardColumns);
+    const setStoreCombinedBoardColumns = useAppStore((s) => s.setCombinedBoardColumns);
 
     const [pageState, setPageState] = useState<PageState>("loading");
     const [availableBoards, setAvailableBoards] = useState<AvailableBoard[]>([]);
     const [selectedBoards, setSelectedBoards] = useState<SelectedBoard[]>([]);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [search, setSearch] = useState("");
+    const [pendingRemoveBoardId, setPendingRemoveBoardId] = useState<string | null>(null);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -158,6 +162,10 @@ export function BoardsSection() {
         setSelectedBoards(boards);
         setStoreSelectedBoards(boards);
         await window.electron.saveSelectedBoards(boards);
+        const columnsResult = await window.electron.getBoardColumnsForSelected();
+        if (columnsResult.columns) {
+            setBoardColumns(columnsResult.columns);
+        }
         toast.success("Boards saved");
     }
 
@@ -166,6 +174,23 @@ export function BoardsSection() {
     }
 
     function handleRemove(boardId: string) {
+        const hasMappings = storeCombinedBoardColumns.some((col) =>
+            col.sourceMappings.some((m) => m.boardId === boardId)
+        );
+        if (hasMappings) {
+            setPendingRemoveBoardId(boardId);
+        } else {
+            doRemoveBoard(boardId);
+        }
+    }
+
+    async function doRemoveBoard(boardId: string) {
+        const prunedColumns = storeCombinedBoardColumns.map((col) => ({
+            ...col,
+            sourceMappings: col.sourceMappings.filter((m) => m.boardId !== boardId),
+        }));
+        await window.electron.saveCombinedBoardColumns(prunedColumns);
+        setStoreCombinedBoardColumns(prunedColumns);
         updateSelected(selectedBoards.filter((b) => b.boardId !== boardId));
     }
 
@@ -214,6 +239,37 @@ export function BoardsSection() {
     return (
         <div className="space-y-6">
             <h2 className="text-xl font-semibold">Remote Boards</h2>
+
+            {pendingRemoveBoardId !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900 w-full max-w-md mx-4">
+                        <h3 className="text-base font-semibold mb-2">Remove board</h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                            Removing this board will also delete its column mappings in the Combined Board configuration. Do you want to continue?
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setPendingRemoveBoardId(null)}
+                                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const id = pendingRemoveBoardId;
+                                    setPendingRemoveBoardId(null);
+                                    doRemoveBoard(id);
+                                }}
+                                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex gap-6 min-h-0">
                 {/* Available boards column */}

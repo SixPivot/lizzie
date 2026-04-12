@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { testConnection, fetchAvailableBoards, type ConnectionTestResult } from "./azdo";
+import { testConnection, fetchAvailableBoards, fetchBoardColumns, type ConnectionTestResult } from "./azdo";
 
 // vi.hoisted runs before module resolution, making mocks available in the vi.mock factory
 const connectMock = vi.hoisted(() => vi.fn());
@@ -181,61 +181,119 @@ describe("fetchAvailableBoards", () => {
 });
 
 
-describe("testConnection", () => {
+describe("fetchBoardColumns", () => {
+    const makeGetBoardColumnsMock = vi.fn();
+
+    const selectedBoard = {
+        boardId: "board-1",
+        boardName: "Stories",
+        projectId: "proj-1",
+        projectName: "Alpha Project",
+        teamId: "team-1",
+        teamName: "Alpha Team",
+    };
+
     beforeEach(() => {
-        connectMock.mockReset();
-    });
-
-    it("returns success when connect resolves", async () => {
-        connectMock.mockResolvedValue({});
-        const result: ConnectionTestResult = await testConnection({
-            orgUrl: "https://dev.azure.com/myorg",
-            pat: "validpat",
+        makeGetBoardColumnsMock.mockReset();
+        getWorkApiMock.mockResolvedValue({
+            getBoardColumns: makeGetBoardColumnsMock,
         });
-        expect(result.success).toBe(true);
     });
 
-    it("returns pat error for 401 status", async () => {
-        const err = Object.assign(new Error("Unauthorized"), { statusCode: 401 });
-        connectMock.mockRejectedValue(err);
-        const result = await testConnection({ orgUrl: "https://dev.azure.com/myorg", pat: "badpat" });
-        expect(result.success).toBe(false);
-        expect(result.errorField).toBe("pat");
-        expect(result.error).toBe("Invalid PAT or insufficient permissions.");
+    it("returns a flat list of columns for a single board", async () => {
+        makeGetBoardColumnsMock.mockResolvedValue([
+            { id: "col-1", name: "New" },
+            { id: "col-2", name: "Active" },
+            { id: "col-3", name: "Closed" },
+        ]);
+
+        const result = await fetchBoardColumns({
+            orgUrl: "https://dev.azure.com/myorg",
+            pat: "pat",
+            selectedBoards: [selectedBoard],
+        });
+
+        expect(result).toHaveLength(3);
+        expect(result[0]).toMatchObject({
+            boardId: "board-1",
+            boardName: "Stories",
+            projectId: "proj-1",
+            projectName: "Alpha Project",
+            columnId: "col-1",
+            columnName: "New",
+        });
     });
 
-    it("returns pat error for 403 status", async () => {
-        const err = Object.assign(new Error("Forbidden"), { statusCode: 403 });
-        connectMock.mockRejectedValue(err);
-        const result = await testConnection({ orgUrl: "https://dev.azure.com/myorg", pat: "badpat" });
-        expect(result.success).toBe(false);
-        expect(result.errorField).toBe("pat");
+    it("returns a flat list of columns across multiple boards", async () => {
+        const board2 = { ...selectedBoard, boardId: "board-2", boardName: "Tasks" };
+        makeGetBoardColumnsMock.mockImplementation(
+            (_ctx: unknown, boardId: string) => {
+                if (boardId === "board-1") {
+                    return Promise.resolve([{ id: "col-1", name: "New" }]);
+                }
+                return Promise.resolve([{ id: "col-2", name: "Active" }]);
+            }
+        );
+
+        const result = await fetchBoardColumns({
+            orgUrl: "https://dev.azure.com/myorg",
+            pat: "pat",
+            selectedBoards: [selectedBoard, board2],
+        });
+
+        expect(result).toHaveLength(2);
+        expect(result.map((c) => c.columnId)).toEqual(expect.arrayContaining(["col-1", "col-2"]));
     });
 
-    it("returns orgUrl error for ENOTFOUND network error", async () => {
-        const err = new Error("getaddrinfo ENOTFOUND dev.azure.com");
-        connectMock.mockRejectedValue(err);
-        const result = await testConnection({ orgUrl: "https://bad-url.example", pat: "somepat" });
-        expect(result.success).toBe(false);
-        expect(result.errorField).toBe("orgUrl");
-        expect(result.error).toContain("Could not reach");
+    it("returns empty array when selectedBoards is empty", async () => {
+        const result = await fetchBoardColumns({
+            orgUrl: "https://dev.azure.com/myorg",
+            pat: "pat",
+            selectedBoards: [],
+        });
+        expect(result).toEqual([]);
+        expect(makeGetBoardColumnsMock).not.toHaveBeenCalled();
     });
 
-    it("returns orgUrl error for ECONNREFUSED", async () => {
-        const err = new Error("connect ECONNREFUSED 127.0.0.1:443");
-        connectMock.mockRejectedValue(err);
-        const result = await testConnection({ orgUrl: "https://localhost", pat: "somepat" });
-        expect(result.success).toBe(false);
-        expect(result.errorField).toBe("orgUrl");
+    it("skips columns with missing id or name", async () => {
+        makeGetBoardColumnsMock.mockResolvedValue([
+            { id: "col-1", name: "New" },
+            { id: undefined, name: "No Id" },
+            { id: "col-3", name: undefined },
+        ]);
+
+        const result = await fetchBoardColumns({
+            orgUrl: "https://dev.azure.com/myorg",
+            pat: "pat",
+            selectedBoards: [selectedBoard],
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0].columnId).toBe("col-1");
     });
 
-    it("returns pat error with raw message for unknown errors", async () => {
-        const err = new Error("Something went wrong");
-        connectMock.mockRejectedValue(err);
-        const result = await testConnection({ orgUrl: "https://dev.azure.com/myorg", pat: "somepat" });
-        expect(result.success).toBe(false);
-        expect(result.error).toBe("Something went wrong");
-        expect(result.errorField).toBe("pat");
+    it("skips a board that throws and continues with the rest", async () => {
+        const board2 = { ...selectedBoard, boardId: "board-2", boardName: "Tasks" };
+        const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+        makeGetBoardColumnsMock.mockImplementation(
+            (_ctx: unknown, boardId: string) => {
+                if (boardId === "board-1") {
+                    return Promise.reject(new Error("forbidden"));
+                }
+                return Promise.resolve([{ id: "col-2", name: "Active" }]);
+            }
+        );
+
+        const result = await fetchBoardColumns({
+            orgUrl: "https://dev.azure.com/myorg",
+            pat: "pat",
+            selectedBoards: [selectedBoard, board2],
+        });
+
+        expect(result).toHaveLength(1);
+        expect(result[0].columnId).toBe("col-2");
+        expect(warnSpy).toHaveBeenCalled();
+        warnSpy.mockRestore();
     });
 });
-

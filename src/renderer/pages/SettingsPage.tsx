@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { ConnectionSection } from "../components/Settings/ConnectionSection";
 import { BoardsSection } from "../components/Settings/BoardsSection";
+import { CombinedBoardSection } from "../components/Settings/CombinedBoardSection";
 
-type SettingsSection = "connection" | "boards";
+type SettingsSection = "connection" | "boards" | "combined-board";
 
 const sections: { id: SettingsSection; label: string }[] = [
     { id: "connection", label: "Connection" },
     { id: "boards", label: "Remote Boards" },
+    { id: "combined-board", label: "Combined Board" },
 ];
 
 export function SettingsPage() {
@@ -39,9 +41,18 @@ export function SettingsPage() {
             </nav>
 
             {/* Content area */}
-            <main className="flex-1 overflow-auto p-8">
-                {activeSection === "connection" && <ConnectionSection />}
-                {activeSection === "boards" && <BoardsSection />}
+            <main className="flex-1 flex flex-col overflow-hidden">
+                {activeSection === "connection" && (
+                    <div className="flex-1 overflow-auto p-8">
+                        <ConnectionSection />
+                    </div>
+                )}
+                {activeSection === "boards" && (
+                    <div className="flex-1 overflow-auto p-8">
+                        <BoardsSection />
+                    </div>
+                )}
+                {activeSection === "combined-board" && <CombinedBoardSection />}
             </main>
         </div>
     );

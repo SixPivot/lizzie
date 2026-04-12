@@ -158,3 +158,70 @@ describe("saveConfig", () => {
         expect(result.pat).toBe("roundtrippat");
     });
 });
+
+describe("loadCombinedBoardColumns", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        existsSync.mockReturnValue(true);
+    });
+
+    it("returns empty array when config file has no combinedBoardColumns", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({}));
+        const { loadCombinedBoardColumns } = await importConfig();
+        expect(loadCombinedBoardColumns()).toEqual([]);
+    });
+
+    it("returns the stored combined board columns", async () => {
+        const columns = [
+            { id: "col-1", name: "Backlog", sourceMappings: [] },
+            { id: "col-2", name: "In Progress", sourceMappings: [] },
+        ];
+        readFileSync.mockReturnValue(JSON.stringify({ combinedBoardColumns: columns }));
+        const { loadCombinedBoardColumns } = await importConfig();
+        expect(loadCombinedBoardColumns()).toEqual(columns);
+    });
+
+    it("returns empty array when config file does not exist", async () => {
+        existsSync.mockReturnValue(false);
+        const { loadCombinedBoardColumns } = await importConfig();
+        expect(loadCombinedBoardColumns()).toEqual([]);
+    });
+});
+
+describe("saveCombinedBoardColumns", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        writeFileSync.mockClear();
+        existsSync.mockReturnValue(true);
+        readFileSync.mockReturnValue(JSON.stringify({}));
+    });
+
+    it("writes combinedBoardColumns to config.json", async () => {
+        const columns = [{ id: "col-1", name: "Backlog", sourceMappings: [] }];
+        const { saveCombinedBoardColumns } = await importConfig();
+        saveCombinedBoardColumns(columns);
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.combinedBoardColumns).toEqual(columns);
+    });
+
+    it("preserves other config fields when saving combined columns", async () => {
+        readFileSync.mockReturnValue(
+            JSON.stringify({ orgUrl: "https://dev.azure.com/myorg" })
+        );
+        const { saveCombinedBoardColumns } = await importConfig();
+        saveCombinedBoardColumns([{ id: "col-1", name: "Backlog", sourceMappings: [] }]);
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.orgUrl).toBe("https://dev.azure.com/myorg");
+        expect(written.combinedBoardColumns).toHaveLength(1);
+    });
+
+    it("overwrites the previously stored combined columns", async () => {
+        const existing = [{ id: "col-1", name: "Backlog", sourceMappings: [] }];
+        readFileSync.mockReturnValue(JSON.stringify({ combinedBoardColumns: existing }));
+        const { saveCombinedBoardColumns } = await importConfig();
+        const updated = [{ id: "col-2", name: "Done", sourceMappings: [] }];
+        saveCombinedBoardColumns(updated);
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.combinedBoardColumns).toEqual(updated);
+    });
+});

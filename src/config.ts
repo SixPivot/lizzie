@@ -18,10 +18,26 @@ interface WindowBounds {
     height: number;
 }
 
+export interface CombinedBoardColumnMapping {
+    boardId: string;
+    boardName: string;
+    projectId: string;
+    projectName: string;
+    columnId: string;
+    columnName: string;
+}
+
+export interface CombinedBoardColumn {
+    id: string;
+    name: string;
+    sourceMappings: CombinedBoardColumnMapping[];
+}
+
 interface ConfigFile {
     orgUrl?: string;
     encryptedPat?: string;
     selectedBoards?: SelectedBoard[];
+    combinedBoardColumns?: CombinedBoardColumn[];
     windowBounds?: WindowBounds;
 }
 
@@ -97,6 +113,14 @@ export function loadSelectedBoards(): SelectedBoard[] {
 
 export function saveSelectedBoards(boards: SelectedBoard[]): void {
     writeConfigFile({ ...readConfigFile(), selectedBoards: boards });
+}
+
+export function loadCombinedBoardColumns(): CombinedBoardColumn[] {
+    return readConfigFile().combinedBoardColumns ?? [];
+}
+
+export function saveCombinedBoardColumns(columns: CombinedBoardColumn[]): void {
+    writeConfigFile({ ...readConfigFile(), combinedBoardColumns: columns });
 }
 
 export function loadWindowBounds(): WindowBounds | null {

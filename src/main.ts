@@ -1,8 +1,8 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadWindowBounds, saveWindowBounds, type SelectedBoard } from "./config";
-import { testConnection, fetchAvailableBoards } from "./azdo";
+import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadCombinedBoardColumns, saveCombinedBoardColumns, loadWindowBounds, saveWindowBounds, type SelectedBoard, type CombinedBoardColumn } from "./config";
+import { testConnection, fetchAvailableBoards, fetchBoardColumns } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -124,6 +124,30 @@ ipcMain.handle("boards:getAvailable", async () => {
 
 ipcMain.handle("boards:saveSelected", (_, boards: SelectedBoard[]) => {
   saveSelectedBoards(boards);
+});
+
+ipcMain.handle("boards:getBoardColumnsForSelected", async () => {
+  const { orgUrl, pat } = loadConfig();
+  if (!orgUrl || !pat) {
+    return { error: "NO_CREDENTIALS" };
+  }
+  try {
+    const selectedBoards = loadSelectedBoards();
+    const columns = await fetchBoardColumns({ orgUrl, pat, selectedBoards });
+    return { columns };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: message };
+  }
+});
+
+// Combined board IPC handlers
+ipcMain.handle("combinedBoard:loadColumns", () => {
+  return loadCombinedBoardColumns();
+});
+
+ipcMain.handle("combinedBoard:saveColumns", (_, columns: CombinedBoardColumn[]) => {
+  saveCombinedBoardColumns(columns);
 });
 
 // This method will be called when Electron has finished

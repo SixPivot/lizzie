@@ -16,6 +16,34 @@ export interface AvailableBoard {
     boardName: string;
 }
 
+export interface BoardColumnInfo {
+    boardId: string;
+    boardName: string;
+    projectId: string;
+    projectName: string;
+    teamId: string;
+    teamName: string;
+    columnId: string;
+    columnName: string;
+}
+
+export interface CombinedBoardColumnMapping {
+    boardId: string;
+    boardName: string;
+    projectId: string;
+    projectName: string;
+    teamId: string;
+    teamName: string;
+    columnId: string;
+    columnName: string;
+}
+
+export interface CombinedBoardColumn {
+    id: string;
+    name: string;
+    sourceMappings: CombinedBoardColumnMapping[];
+}
+
 export interface ElectronAPI {
     platform: NodeJS.Platform;
     minimise: () => void;
@@ -25,4 +53,7 @@ export interface ElectronAPI {
     saveAndTestSettings: (args: { orgUrl: string; pat: string }) => Promise<{ success: boolean; error?: string; errorField?: "pat" | "orgUrl" }>;
     getAvailableBoards: () => Promise<{ boards?: AvailableBoard[]; error?: string }>;
     saveSelectedBoards: (boards: SelectedBoard[]) => Promise<void>;
+    getBoardColumnsForSelected: () => Promise<{ columns?: BoardColumnInfo[]; error?: string }>;
+    loadCombinedBoardColumns: () => Promise<CombinedBoardColumn[]>;
+    saveCombinedBoardColumns: (columns: CombinedBoardColumn[]) => Promise<void>;
 }
