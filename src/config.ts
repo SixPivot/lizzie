@@ -33,12 +33,15 @@ export interface CombinedBoardColumn {
     sourceMappings: CombinedBoardColumnMapping[];
 }
 
+export type ThemePreference = "light" | "dark" | "auto";
+
 interface ConfigFile {
     orgUrl?: string;
     encryptedPat?: string;
     selectedBoards?: SelectedBoard[];
     combinedBoardColumns?: CombinedBoardColumn[];
     windowBounds?: WindowBounds;
+    theme?: ThemePreference;
 }
 
 export interface AppConfig {
@@ -129,4 +132,12 @@ export function loadWindowBounds(): WindowBounds | null {
 
 export function saveWindowBounds(bounds: WindowBounds): void {
     writeConfigFile({ ...readConfigFile(), windowBounds: bounds });
+}
+
+export function loadTheme(): ThemePreference {
+    return readConfigFile().theme ?? "auto";
+}
+
+export function saveTheme(theme: ThemePreference): void {
+    writeConfigFile({ ...readConfigFile(), theme });
 }

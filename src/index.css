@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+    --color-bg: hsl(214, 45%, 96%);
+    --color-text: #333333;
+    --color-border: rgba(0, 0, 0, 0.08);
+    --color-sidebar-hover: rgba(0, 0, 0, 0.06);
+    --color-active: rgba(0, 0, 0, 0.10);
+}
+
+.dark {
+    --color-bg: hsl(214, 25%, 11%);
+    --color-text: #cccccc;
+    --color-border: rgba(255, 255, 255, 0.08);
+    --color-sidebar-hover: rgba(255, 255, 255, 0.06);
+    --color-active: rgba(255, 255, 255, 0.10);
+}
+
+html, body, #root {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+}

@@ -12,9 +12,9 @@ function WindowControlButton({ label, onClick, children, danger = false }: Windo
             onClick={onClick}
             className={[
                 "flex items-center justify-center w-11 h-full",
-                "text-gray-400 hover:text-white transition-colors",
+                "text-[var(--color-text)]/60 hover:text-[var(--color-text)] transition-colors",
                 "[-webkit-app-region:no-drag]",
-                danger ? "hover:bg-red-600" : "hover:bg-white/10",
+                danger ? "hover:bg-red-600 hover:text-white" : "hover:bg-[var(--color-active)]",
             ].join(" ")}
         >
             {children}

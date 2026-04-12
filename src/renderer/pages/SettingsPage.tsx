@@ -2,23 +2,25 @@ import { useState } from "react";
 import { ConnectionSection } from "../components/Settings/ConnectionSection";
 import { BoardsSection } from "../components/Settings/BoardsSection";
 import { CombinedBoardSection } from "../components/Settings/CombinedBoardSection";
+import { AppearanceSection } from "../components/Settings/AppearanceSection";
 
-type SettingsSection = "connection" | "boards" | "combined-board";
+type SettingsSection = "appearance" | "connection" | "boards" | "combined-board";
 
 const sections: { id: SettingsSection; label: string }[] = [
+    { id: "appearance", label: "Appearance" },
     { id: "connection", label: "Connection" },
     { id: "boards", label: "Remote Boards" },
     { id: "combined-board", label: "Combined Board" },
 ];
 
 export function SettingsPage() {
-    const [activeSection, setActiveSection] = useState<SettingsSection>("connection");
+    const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
 
     return (
         <div className="flex h-full">
             {/* Sidebar */}
-            <nav className="w-52 shrink-0 border-r border-gray-200 dark:border-gray-700 p-4">
-                <h1 className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            <nav className="w-52 shrink-0 border-r border-[var(--color-border)] p-4">
+                <h1 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--color-text)]/50">
                     Settings
                 </h1>
                 <ul className="space-y-1">
@@ -29,8 +31,8 @@ export function SettingsPage() {
                                 onClick={() => setActiveSection(section.id)}
                                 className={`w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
                                     activeSection === section.id
-                                        ? "bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
-                                        : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                        ? "bg-[var(--color-active)] text-[var(--color-text)]"
+                                        : "text-[var(--color-text)]/70 hover:bg-[var(--color-sidebar-hover)] hover:text-[var(--color-text)]"
                                 }`}
                             >
                                 {section.label}
@@ -42,6 +44,11 @@ export function SettingsPage() {
 
             {/* Content area */}
             <main className="flex-1 flex flex-col overflow-hidden">
+                {activeSection === "appearance" && (
+                    <div className="flex-1 overflow-auto p-8">
+                        <AppearanceSection />
+                    </div>
+                )}
                 {activeSection === "connection" && (
                     <div className="flex-1 overflow-auto p-8">
                         <ConnectionSection />
@@ -57,4 +64,5 @@ export function SettingsPage() {
         </div>
     );
 }
+
 

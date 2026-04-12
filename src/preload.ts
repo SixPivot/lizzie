@@ -13,6 +13,8 @@ const api: ElectronAPI = {
     getBoardColumnsForSelected: () => ipcRenderer.invoke("boards:getBoardColumnsForSelected"),
     loadCombinedBoardColumns: () => ipcRenderer.invoke("combinedBoard:loadColumns"),
     saveCombinedBoardColumns: (columns) => ipcRenderer.invoke("combinedBoard:saveColumns", columns),
+    loadTheme: () => ipcRenderer.invoke("theme:load"),
+    saveTheme: (theme) => ipcRenderer.invoke("theme:save", theme),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

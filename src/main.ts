@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadCombinedBoardColumns, saveCombinedBoardColumns, loadWindowBounds, saveWindowBounds, type SelectedBoard, type CombinedBoardColumn } from "./config";
+import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadCombinedBoardColumns, saveCombinedBoardColumns, loadWindowBounds, saveWindowBounds, loadTheme, saveTheme, type SelectedBoard, type CombinedBoardColumn, type ThemePreference } from "./config";
 import { testConnection, fetchAvailableBoards, fetchBoardColumns } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -148,6 +148,15 @@ ipcMain.handle("combinedBoard:loadColumns", () => {
 
 ipcMain.handle("combinedBoard:saveColumns", (_, columns: CombinedBoardColumn[]) => {
   saveCombinedBoardColumns(columns);
+});
+
+// Theme IPC handlers
+ipcMain.handle("theme:load", () => {
+  return loadTheme();
+});
+
+ipcMain.handle("theme:save", (_, theme: ThemePreference) => {
+  saveTheme(theme);
 });
 
 // This method will be called when Electron has finished

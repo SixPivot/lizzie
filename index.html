@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <title>AzDO Project Management</title>
+    <script>
+      (function () {
+        var resolved = localStorage.getItem("app-theme-resolved");
+        if (resolved === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

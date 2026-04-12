@@ -44,6 +44,8 @@ export interface CombinedBoardColumn {
     sourceMappings: CombinedBoardColumnMapping[];
 }
 
+export type ThemePreference = "light" | "dark" | "auto";
+
 export interface ElectronAPI {
     platform: NodeJS.Platform;
     minimise: () => void;
@@ -56,4 +58,6 @@ export interface ElectronAPI {
     getBoardColumnsForSelected: () => Promise<{ columns?: BoardColumnInfo[]; error?: string }>;
     loadCombinedBoardColumns: () => Promise<CombinedBoardColumn[]>;
     saveCombinedBoardColumns: (columns: CombinedBoardColumn[]) => Promise<void>;
+    loadTheme: () => Promise<ThemePreference>;
+    saveTheme: (theme: ThemePreference) => Promise<void>;
 }
