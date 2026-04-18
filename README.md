@@ -2,16 +2,6 @@
 
 Layer over AzDO for local management of cards using Markdown, implemented as an Electron app
 
-I had an idea about a layer over Azure DevOps that let you manage cards using a local Markdown repository and sync back and forth between local and AzDO. The local repository can be opened in VS code etc and you could use AI tooling to work on the cards, then use the tool to update AzDO cards with the updated local repository.
-
-Quinten and I had a conversation about being able to view a consolidated view of the board of multiple AzDO projects.
-
-- AV has four projects, each with different column setups
-- The tool would connect to each project
-- Define columns in the consolidated view
-- Define mappings from each project to the consolidated view
-- Tools to filter in/out individual projects, card types
-
 ## Considerations/questions
 
 - [ ] Conflict resolution
