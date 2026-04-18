@@ -44,7 +44,7 @@ sudo apt-get install build-essential libgtk-3-dev libnotify-dev libgconf-2-4 lib
 
 ```bash
 git clone https://github.com/becdetat/azdo-project-management-thing.git
-cd azdo-project-management-thing
+cd lizzie
 npm ci
 ```
 
@@ -96,7 +96,7 @@ To produce only a packaged app (no installer):
 npm run package
 ```
 
-Output goes to `out/azdo-project-management-thing-<platform>-<arch>/`.
+Output goes to `out/lizzie-<platform>-<arch>/`.
 
 ---
 

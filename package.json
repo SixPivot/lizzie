@@ -1,8 +1,8 @@
 {
-  "name": "src",
-  "productName": "src",
+  "name": "lizzie",
+  "productName": "Lizzie",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "Lizzie - A layer on top of Azure DevOps to consolidate multiple projects",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {

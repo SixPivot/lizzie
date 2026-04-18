@@ -1,4 +1,4 @@
-# azdo-project-management-thing
+# Lizzie
 
 Layer over AzDO for local management of cards using Markdown, implemented as an Electron app
 
