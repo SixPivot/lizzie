@@ -452,12 +452,12 @@ function SortableColumnCard({
                     onDragEnd={handleMappingDragEnd}
                 >
                     <SortableContext
-                        items={column.sourceMappings.map((m) => `${m.boardId}::${m.columnId}`)}
+                        items={column.sourceMappings.map((m) => `${m.connectionId}::${m.boardId}::${m.columnId}`)}
                         strategy={verticalListSortingStrategy}
                     >
                         <div className="space-y-1">
                             {column.sourceMappings.map((m) => {
-                                const mappingKey = `${m.boardId}::${m.columnId}`;
+                                const mappingKey = `${m.connectionId}::${m.boardId}::${m.columnId}`;
                                 return (
                                     <SortableMappingRow
                                         key={mappingKey}
