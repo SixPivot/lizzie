@@ -44,6 +44,17 @@ export interface CombinedBoardColumn {
     sourceMappings: CombinedBoardColumnMapping[];
 }
 
+export interface WorkItemCard {
+    id: number;
+    boardId: string;
+    columnName: string;
+    boardOrder: number;
+    teamName: string;
+    projectName: string;
+    orgUrl: string;
+    fields: Record<string, unknown>;
+}
+
 export type ThemePreference = "light" | "dark" | "auto";
 
 export interface ElectronAPI {
@@ -58,6 +69,8 @@ export interface ElectronAPI {
     getBoardColumnsForSelected: () => Promise<{ columns?: BoardColumnInfo[]; error?: string }>;
     loadCombinedBoardColumns: () => Promise<CombinedBoardColumn[]>;
     saveCombinedBoardColumns: (columns: CombinedBoardColumn[]) => Promise<void>;
+    getWorkItems: () => Promise<{ cards?: WorkItemCard[]; error?: string }>;
+    openExternal: (url: string) => void;
     loadTheme: () => Promise<ThemePreference>;
     saveTheme: (theme: ThemePreference) => Promise<void>;
 }

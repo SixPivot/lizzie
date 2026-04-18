@@ -1,6 +1,17 @@
 import * as azdev from "azure-devops-node-api";
 import type { SelectedBoard } from "./config";
 
+export interface WorkItemCard {
+    id: number;
+    boardId: string;
+    columnName: string;
+    boardOrder: number;
+    teamName: string;
+    projectName: string;
+    orgUrl: string;
+    fields: Record<string, unknown>;
+}
+
 export interface BoardColumnInfo {
     boardId: string;
     boardName: string;
@@ -178,4 +189,100 @@ export async function fetchBoardColumns({
     );
 
     return columnsByBoard.flat();
+}
+
+const WORK_ITEM_FIELDS = [
+    "System.Id",
+    "System.Title",
+    "System.WorkItemType",
+    "System.AssignedTo",
+    "System.Tags",
+    "System.Description",
+    "System.BoardColumn",
+    "System.BoardColumnDone",
+    "System.State",
+    "System.AreaPath",
+    "System.IterationPath",
+    "System.CreatedDate",
+    "System.ChangedDate",
+    "System.CreatedBy",
+    "System.ChangedBy",
+    "Microsoft.VSTS.Common.AcceptanceCriteria",
+    "Microsoft.VSTS.Common.Priority",
+    "Microsoft.VSTS.Common.ResolvedReason",
+    "Microsoft.VSTS.Common.ClosedDate",
+    "Microsoft.VSTS.Common.ActivatedDate",
+    "Microsoft.VSTS.TCM.ReproSteps",
+    "Microsoft.VSTS.TCM.SystemInfo",
+    "Microsoft.VSTS.Common.StackRank",
+];
+
+export async function fetchWorkItemsForBoard({
+    orgUrl,
+    pat,
+    board,
+}: {
+    orgUrl: string;
+    pat: string;
+    board: SelectedBoard;
+}): Promise<WorkItemCard[]> {
+    const authHandler = azdev.getPersonalAccessTokenHandler(pat);
+    const connection = new azdev.WebApi(orgUrl, authHandler);
+    const witApi = await connection.getWorkItemTrackingApi();
+
+    const teamContext = {
+        project: board.projectName,
+        projectId: board.projectId,
+        team: board.teamName,
+        teamId: board.teamId,
+    };
+
+    const wiqlResult = await witApi.queryByWiql(
+        {
+            query: `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${board.projectName.replace(/'/g, "''")}' ORDER BY [Microsoft.VSTS.Common.StackRank]`,
+        },
+        teamContext,
+        false,
+        500
+    );
+
+    const refs = wiqlResult.workItems ?? [];
+    if (refs.length === 0) return [];
+
+    const ids = refs.map((r) => r.id!).filter(Boolean);
+
+    // Fetch in batches of 200 (API limit)
+    const BATCH_SIZE = 200;
+    const batches: number[][] = [];
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        batches.push(ids.slice(i, i + BATCH_SIZE));
+    }
+
+    const workItemBatches = await Promise.all(
+        batches.map((batch) => witApi.getWorkItems(batch, WORK_ITEM_FIELDS, undefined, undefined, undefined, board.projectName))
+    );
+    const workItems = workItemBatches.flat();
+
+    const cards: WorkItemCard[] = [];
+    let boardOrder = 0;
+
+    for (const item of workItems) {
+        if (!item.id || !item.fields) continue;
+
+        const columnName = item.fields["System.BoardColumn"] as string | undefined;
+        if (!columnName) continue; // not on this board
+
+        cards.push({
+            id: item.id,
+            boardId: board.boardId,
+            columnName,
+            boardOrder: boardOrder++,
+            teamName: board.teamName,
+            projectName: board.projectName,
+            orgUrl,
+            fields: item.fields,
+        });
+    }
+
+    return cards;
 }

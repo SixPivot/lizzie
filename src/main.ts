@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, screen } from "electron";
+import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadCombinedBoardColumns, saveCombinedBoardColumns, loadWindowBounds, saveWindowBounds, loadTheme, saveTheme, type SelectedBoard, type CombinedBoardColumn, type ThemePreference } from "./config";
-import { testConnection, fetchAvailableBoards, fetchBoardColumns } from "./azdo";
+import { testConnection, fetchAvailableBoards, fetchBoardColumns, fetchWorkItemsForBoard } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -148,6 +148,28 @@ ipcMain.handle("combinedBoard:loadColumns", () => {
 
 ipcMain.handle("combinedBoard:saveColumns", (_, columns: CombinedBoardColumn[]) => {
   saveCombinedBoardColumns(columns);
+});
+
+ipcMain.handle("combinedBoard:getWorkItems", async () => {
+  const { orgUrl, pat } = loadConfig();
+  if (!orgUrl || !pat) {
+    return { error: "NO_CREDENTIALS" };
+  }
+  try {
+    const selectedBoards = loadSelectedBoards();
+    const cardsByBoard = await Promise.all(
+      selectedBoards.map((board) => fetchWorkItemsForBoard({ orgUrl, pat, board }))
+    );
+    return { cards: cardsByBoard.flat() };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { error: message };
+  }
+});
+
+// Shell IPC handlers
+ipcMain.on("shell:openExternal", (_, url: string) => {
+  shell.openExternal(url);
 });
 
 // Theme IPC handlers
