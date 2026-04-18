@@ -1,7 +1,25 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
 import path from "node:path";
 import started from "electron-squirrel-startup";
-import { loadConfig, saveConfig, loadSelectedBoards, saveSelectedBoards, loadCombinedBoardColumns, saveCombinedBoardColumns, loadWindowBounds, saveWindowBounds, loadTheme, saveTheme, type SelectedBoard, type CombinedBoardColumn, type ThemePreference } from "./config";
+import {
+    loadConnections,
+    findConnectionById,
+    decryptConnectionPat,
+    isOrgUrlTaken,
+    addConnection,
+    removeConnection,
+    loadSelectedBoards,
+    saveSelectedBoards,
+    loadCombinedBoardColumns,
+    saveCombinedBoardColumns,
+    loadWindowBounds,
+    saveWindowBounds,
+    loadTheme,
+    saveTheme,
+    type SelectedBoard,
+    type CombinedBoardColumn,
+    type ThemePreference,
+} from "./config";
 import { testConnection, fetchAvailableBoards, fetchBoardColumns, fetchWorkItemsForBoard } from "./azdo";
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -98,28 +116,61 @@ ipcMain.on("window:close", () => {
 
 // Settings IPC handlers
 ipcMain.handle("settings:load", () => {
-  const config = loadConfig();
-  return { ...config, selectedBoards: loadSelectedBoards() };
+    return { connections: loadConnections(), selectedBoards: loadSelectedBoards() };
 });
 
-ipcMain.handle("settings:saveAndTest", async (_, { orgUrl, pat }: { orgUrl: string; pat: string }) => {
-  saveConfig({ orgUrl, pat });
-  return testConnection({ orgUrl, pat });
+// Connection IPC handlers
+ipcMain.handle("connections:load", () => {
+    return loadConnections();
+});
+
+ipcMain.handle("connections:add", async (_, { name, orgUrl, pat }: { name: string; orgUrl: string; pat: string }) => {
+    if (isOrgUrlTaken(orgUrl)) {
+        return { success: false, error: "A connection to this organisation already exists.", errorField: "orgUrl" };
+    }
+    const result = await testConnection({ orgUrl, pat });
+    if (!result.success) {
+        return { success: false, error: result.error, errorField: result.errorField };
+    }
+    const connection = addConnection({ name, orgUrl, pat });
+    return { success: true, connection };
+});
+
+ipcMain.handle("connections:remove", (_, { connectionId }: { connectionId: string }) => {
+    removeConnection(connectionId);
+    return { success: true };
+});
+
+ipcMain.handle("connections:retest", async (_, { connectionId }: { connectionId: string }) => {
+    const connection = findConnectionById(connectionId);
+    if (!connection) {
+        return { success: false, error: "Connection not found." };
+    }
+    const pat = decryptConnectionPat(connection);
+    if (!pat) {
+        return { success: false, error: "Could not decrypt PAT." };
+    }
+    const result = await testConnection({ orgUrl: connection.orgUrl, pat });
+    return result;
 });
 
 // Boards IPC handlers
-ipcMain.handle("boards:getAvailable", async () => {
-  const { orgUrl, pat } = loadConfig();
-  if (!orgUrl || !pat) {
-    return { error: "NO_CREDENTIALS" };
-  }
-  try {
-    const boards = await fetchAvailableBoards({ orgUrl, pat });
-    return { boards };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { error: message };
-  }
+ipcMain.handle("boards:getAvailable", async (_, { connectionId }: { connectionId: string }) => {
+    const connection = findConnectionById(connectionId);
+    if (!connection) {
+        return { error: "NO_CREDENTIALS" };
+    }
+    const pat = decryptConnectionPat(connection);
+    if (!pat) {
+        return { error: "NO_CREDENTIALS" };
+    }
+    try {
+        const boards = await fetchAvailableBoards({ orgUrl: connection.orgUrl, pat });
+        return { boards };
+    } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { error: message };
+    }
 });
 
 ipcMain.handle("boards:saveSelected", (_, boards: SelectedBoard[]) => {
@@ -127,18 +178,37 @@ ipcMain.handle("boards:saveSelected", (_, boards: SelectedBoard[]) => {
 });
 
 ipcMain.handle("boards:getBoardColumnsForSelected", async () => {
-  const { orgUrl, pat } = loadConfig();
-  if (!orgUrl || !pat) {
-    return { error: "NO_CREDENTIALS" };
-  }
-  try {
     const selectedBoards = loadSelectedBoards();
-    const columns = await fetchBoardColumns({ orgUrl, pat, selectedBoards });
-    return { columns };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { error: message };
-  }
+    const connections = loadConnections();
+
+    // Group boards by connectionId
+    const boardsByConnection = new Map<string, SelectedBoard[]>();
+    for (const board of selectedBoards) {
+        const list = boardsByConnection.get(board.connectionId) ?? [];
+        list.push(board);
+        boardsByConnection.set(board.connectionId, list);
+    }
+
+    const allColumns = await Promise.all(
+        Array.from(boardsByConnection.entries()).map(async ([connectionId, boards]) => {
+            const connectionSummary = connections.find((c) => c.id === connectionId);
+            if (!connectionSummary) return [];
+            const connection = findConnectionById(connectionId);
+            if (!connection) return [];
+            const pat = decryptConnectionPat(connection);
+            if (!pat) return [];
+            try {
+                const cols = await fetchBoardColumns({ orgUrl: connection.orgUrl, pat, selectedBoards: boards });
+                return cols.map((c) => ({ ...c, connectionId }));
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.warn(`[main] Failed to fetch board columns for connection ${connectionId}: ${message}`);
+                return [];
+            }
+        })
+    );
+
+    return { columns: allColumns.flat() };
 });
 
 // Combined board IPC handlers
@@ -151,20 +221,44 @@ ipcMain.handle("combinedBoard:saveColumns", (_, columns: CombinedBoardColumn[]) 
 });
 
 ipcMain.handle("combinedBoard:getWorkItems", async () => {
-  const { orgUrl, pat } = loadConfig();
-  if (!orgUrl || !pat) {
-    return { error: "NO_CREDENTIALS" };
-  }
-  try {
     const selectedBoards = loadSelectedBoards();
-    const cardsByBoard = await Promise.all(
-      selectedBoards.map((board) => fetchWorkItemsForBoard({ orgUrl, pat, board }))
+
+    // Group boards by connectionId
+    const boardsByConnection = new Map<string, SelectedBoard[]>();
+    for (const board of selectedBoards) {
+        const list = boardsByConnection.get(board.connectionId) ?? [];
+        list.push(board);
+        boardsByConnection.set(board.connectionId, list);
+    }
+
+    const failedConnections: string[] = [];
+    const connections = loadConnections();
+
+    const cardsByConnection = await Promise.all(
+        Array.from(boardsByConnection.entries()).map(async ([connectionId, boards]) => {
+            const connectionSummary = connections.find((c) => c.id === connectionId);
+            const connection = findConnectionById(connectionId);
+            if (!connection || !connectionSummary) return [];
+            const pat = decryptConnectionPat(connection);
+            if (!pat) {
+                failedConnections.push(connectionSummary.name);
+                return [];
+            }
+            try {
+                const cardsByBoard = await Promise.all(
+                    boards.map((board) => fetchWorkItemsForBoard({ orgUrl: connection.orgUrl, pat, board }))
+                );
+                return cardsByBoard.flat().map((card) => ({ ...card, connectionId }));
+            } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.warn(`[main] Failed to fetch work items for connection ${connectionId}: ${message}`);
+                failedConnections.push(connectionSummary.name);
+                return [];
+            }
+        })
     );
-    return { cards: cardsByBoard.flat() };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { error: message };
-  }
+
+    return { cards: cardsByConnection.flat(), failedConnections };
 });
 
 // Shell IPC handlers

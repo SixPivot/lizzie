@@ -17,10 +17,13 @@ function makeColumn(overrides: Partial<CombinedBoardColumn> = {}): CombinedBoard
 
 function makeMapping(overrides: Partial<CombinedBoardColumnMapping> = {}): CombinedBoardColumnMapping {
     return {
+        connectionId: "conn-1",
         boardId: "board-1",
         boardName: "Stories",
         projectId: "proj-1",
         projectName: "Alpha",
+        teamId: "team-1",
+        teamName: "Alpha Team",
         columnId: "c-1",
         columnName: "Backlog",
         ...overrides,
@@ -127,32 +130,32 @@ describe("buildMappedColumnIds", () => {
         expect(buildMappedColumnIds(columns)).toEqual(new Set());
     });
 
-    it("includes all mapped boardId::columnId keys", () => {
+    it("includes all mapped connectionId::boardId::columnId keys", () => {
         const columns = [
             makeColumn({
                 id: "col-1",
-                sourceMappings: [makeMapping({ boardId: "b1", columnId: "c1" })],
+                sourceMappings: [makeMapping({ connectionId: "conn-1", boardId: "b1", columnId: "c1" })],
             }),
             makeColumn({
                 id: "col-2",
                 sourceMappings: [
-                    makeMapping({ boardId: "b1", columnId: "c2" }),
-                    makeMapping({ boardId: "b2", columnId: "c3" }),
+                    makeMapping({ connectionId: "conn-1", boardId: "b1", columnId: "c2" }),
+                    makeMapping({ connectionId: "conn-2", boardId: "b2", columnId: "c3" }),
                 ],
             }),
         ];
         const result = buildMappedColumnIds(columns);
-        expect(result).toEqual(new Set(["b1::c1", "b1::c2", "b2::c3"]));
+        expect(result).toEqual(new Set(["conn-1::b1::c1", "conn-1::b1::c2", "conn-2::b2::c3"]));
     });
 
     it("excludes columns from the picker that are already mapped", () => {
         const columns = [
             makeColumn({
-                sourceMappings: [makeMapping({ boardId: "b1", columnId: "c1" })],
+                sourceMappings: [makeMapping({ connectionId: "conn-1", boardId: "b1", columnId: "c1" })],
             }),
         ];
         const mappedIds = buildMappedColumnIds(columns);
-        expect(mappedIds.has("b1::c1")).toBe(true);
-        expect(mappedIds.has("b1::c2")).toBe(false);
+        expect(mappedIds.has("conn-1::b1::c1")).toBe(true);
+        expect(mappedIds.has("conn-1::b1::c2")).toBe(false);
     });
 });

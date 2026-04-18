@@ -20,18 +20,26 @@ import { CSS } from "@dnd-kit/utilities";
 import { SpinnerIcon } from "../Shared/SpinnerIcon";
 import { useAppStore } from "../../store/appStore";
 import type { AvailableBoard, SelectedBoard } from "../../../shared/electronAPI";
+import HamburgerIcon from "../Shared/HamburgerIcon";
+import { WarningIcon } from "../Shared/WarningIcon";
 
 type PageState = "loading" | "no-credentials" | "error" | "loaded";
 
-interface SortableBoardItemProps {
-    board: SelectedBoard;
-    isStale: boolean;
-    onRemove: (boardId: string) => void;
+interface AvailableBoardWithConnection extends AvailableBoard {
+    connectionId: string;
+    connectionName: string;
 }
 
-function SortableBoardItem({ board, isStale, onRemove }: SortableBoardItemProps) {
+interface SortableBoardItemProps {
+    board: SelectedBoard;
+    connectionName: string;
+    isStale: boolean;
+    onRemove: (connectionId: string, boardId: string) => void;
+}
+
+function SortableBoardItem({ board, connectionName, isStale, onRemove }: SortableBoardItemProps) {
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-        id: board.boardId,
+        id: `${board.connectionId}::${board.boardId}`,
     });
 
     const style = {
@@ -56,55 +64,21 @@ function SortableBoardItem({ board, isStale, onRemove }: SortableBoardItemProps)
                 className="shrink-0 cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 touch-none"
                 aria-label="Drag to reorder"
             >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                >
-                    <line x1="3" y1="8" x2="21" y2="8" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="16" x2="21" y2="16" />
-                </svg>
+                <HamburgerIcon />
             </button>
 
             <span className="flex-1 min-w-0 truncate">
-                <span className="text-gray-500 dark:text-gray-400">{board.projectName} / </span>
-                {board.boardName}
+                <span className="text-gray-400 dark:text-gray-500">{connectionName} / {board.projectName} / </span>
+                {board.teamName}
             </span>
 
             {isStale && (
-                <span
-                    title="This board could not be found in your organisation. It may have been deleted or the connection may have changed."
-                    className="shrink-0 text-amber-500"
-                    aria-label="Board not found"
-                >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    >
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                </span>
+                <WarningIcon title="This board could not be found in your organisation. It may have been deleted or the connection may have changed." />
             )}
 
             <button
                 type="button"
-                onClick={() => onRemove(board.boardId)}
+                onClick={() => onRemove(board.connectionId, board.boardId)}
                 className="shrink-0 rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors"
             >
                 Remove
@@ -118,13 +92,14 @@ export function BoardsSection() {
     const setBoardColumns = useAppStore((s) => s.setBoardColumns);
     const storeCombinedBoardColumns = useAppStore((s) => s.combinedBoardColumns);
     const setStoreCombinedBoardColumns = useAppStore((s) => s.setCombinedBoardColumns);
+    const connections = useAppStore((s) => s.connections);
 
     const [pageState, setPageState] = useState<PageState>("loading");
-    const [availableBoards, setAvailableBoards] = useState<AvailableBoard[]>([]);
+    const [availableBoards, setAvailableBoards] = useState<AvailableBoardWithConnection[]>([]);
     const [selectedBoards, setSelectedBoards] = useState<SelectedBoard[]>([]);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [search, setSearch] = useState("");
-    const [pendingRemoveBoardId, setPendingRemoveBoardId] = useState<string | null>(null);
+    const [pendingRemove, setPendingRemove] = useState<{ connectionId: string; boardId: string } | null>(null);
 
     const sensors = useSensors(
         useSensor(PointerSensor),
@@ -135,28 +110,53 @@ export function BoardsSection() {
         setPageState("loading");
         setErrorMessage(null);
 
-        const [settingsResult, boardsResult] = await Promise.all([
-            window.electron.loadSettings(),
-            window.electron.getAvailableBoards(),
-        ]);
+        if (connections.length === 0) {
+            setPageState("no-credentials");
+            return;
+        }
 
+        const settingsResult = await window.electron.loadSettings();
         setSelectedBoards(settingsResult.selectedBoards);
         setStoreSelectedBoards(settingsResult.selectedBoards);
 
-        if (boardsResult.error === "NO_CREDENTIALS") {
-            setPageState("no-credentials");
-        } else if (boardsResult.error) {
-            setErrorMessage(boardsResult.error);
+        const boardResults = await Promise.all(
+            connections.map((conn) =>
+                window.electron.getAvailableBoards({ connectionId: conn.id }).then((result) => ({
+                    connectionId: conn.id,
+                    connectionName: conn.name,
+                    result,
+                }))
+            )
+        );
+
+        const allBoards: AvailableBoardWithConnection[] = [];
+        let anyError = false;
+        const errorMessages: string[] = [];
+
+        for (const { connectionId, connectionName, result } of boardResults) {
+            if (result.error && result.error !== "NO_CREDENTIALS") {
+                anyError = true;
+                errorMessages.push(`${connectionName}: ${result.error}`);
+            } else if (result.boards) {
+                for (const board of result.boards) {
+                    allBoards.push({ ...board, connectionId, connectionName });
+                }
+            }
+        }
+
+        setAvailableBoards(allBoards);
+
+        if (anyError && allBoards.length === 0) {
+            setErrorMessage(errorMessages.join("\n"));
             setPageState("error");
         } else {
-            setAvailableBoards(boardsResult.boards ?? []);
             setPageState("loaded");
         }
     }
 
     useEffect(() => {
         loadBoards();
-    }, []);
+    }, [connections.length]);
 
     async function updateSelected(boards: SelectedBoard[]) {
         setSelectedBoards(boards);
@@ -169,78 +169,111 @@ export function BoardsSection() {
         toast.success("Boards saved");
     }
 
-    function handleAdd(board: AvailableBoard) {
-        updateSelected([...selectedBoards, board]);
+    function handleAdd(board: AvailableBoardWithConnection) {
+        const selectedBoard: SelectedBoard = {
+            connectionId: board.connectionId,
+            projectId: board.projectId,
+            projectName: board.projectName,
+            teamId: board.teamId,
+            teamName: board.teamName,
+            boardId: board.boardId,
+            boardName: board.boardName,
+        };
+        updateSelected([...selectedBoards, selectedBoard]);
     }
 
-    function handleRemove(boardId: string) {
+    function handleRemove(connectionId: string, boardId: string) {
         const hasMappings = storeCombinedBoardColumns.some((col) =>
-            col.sourceMappings.some((m) => m.boardId === boardId)
+            col.sourceMappings.some((m) => m.connectionId === connectionId && m.boardId === boardId)
         );
         if (hasMappings) {
-            setPendingRemoveBoardId(boardId);
+            setPendingRemove({ connectionId, boardId });
         } else {
-            doRemoveBoard(boardId);
+            doRemoveBoard(connectionId, boardId);
         }
     }
 
-    async function doRemoveBoard(boardId: string) {
+    async function doRemoveBoard(connectionId: string, boardId: string) {
         const prunedColumns = storeCombinedBoardColumns.map((col) => ({
             ...col,
-            sourceMappings: col.sourceMappings.filter((m) => m.boardId !== boardId),
+            sourceMappings: col.sourceMappings.filter(
+                (m) => !(m.connectionId === connectionId && m.boardId === boardId)
+            ),
         }));
         await window.electron.saveCombinedBoardColumns(prunedColumns);
         setStoreCombinedBoardColumns(prunedColumns);
-        updateSelected(selectedBoards.filter((b) => b.boardId !== boardId));
+        updateSelected(
+            selectedBoards.filter((b) => !(b.connectionId === connectionId && b.boardId === boardId))
+        );
     }
 
     function handleDragEnd(event: DragEndEvent) {
         const { active, over } = event;
         if (over && active.id !== over.id) {
-            const oldIndex = selectedBoards.findIndex((b) => b.boardId === active.id);
-            const newIndex = selectedBoards.findIndex((b) => b.boardId === over.id);
+            const oldIndex = selectedBoards.findIndex(
+                (b) => `${b.connectionId}::${b.boardId}` === active.id
+            );
+            const newIndex = selectedBoards.findIndex(
+                (b) => `${b.connectionId}::${b.boardId}` === over.id
+            );
             updateSelected(arrayMove(selectedBoards, oldIndex, newIndex));
         }
     }
 
-    const selectedBoardIds = useMemo(
-        () => new Set(selectedBoards.map((b) => b.boardId)),
+    const selectedBoardKeys = useMemo(
+        () => new Set(selectedBoards.map((b) => `${b.connectionId}::${b.boardId}`)),
         [selectedBoards]
     );
 
-    const availableBoardIds = useMemo(
-        () => new Set(availableBoards.map((b) => b.boardId)),
+    const availableBoardKeys = useMemo(
+        () => new Set(availableBoards.map((b) => `${b.connectionId}::${b.boardId}`)),
         [availableBoards]
     );
 
-    const projectGroups = useMemo(() => {
+    const connectionGroups = useMemo(() => {
         const lowerSearch = search.toLowerCase();
 
         const filtered = lowerSearch
             ? availableBoards.filter(
                   (b) =>
+                      b.connectionName.toLowerCase().includes(lowerSearch) ||
                       b.projectName.toLowerCase().includes(lowerSearch) ||
                       b.teamName.toLowerCase().includes(lowerSearch)
               )
             : availableBoards;
 
-        const grouped = new Map<string, { projectName: string; boards: AvailableBoard[] }>();
+        const grouped = new Map<
+            string,
+            { connectionName: string; projects: Map<string, { projectName: string; boards: AvailableBoardWithConnection[] }> }
+        >();
+
         for (const board of filtered) {
-            const entry = grouped.get(board.projectId);
-            if (entry) {
-                entry.boards.push(board);
-            } else {
-                grouped.set(board.projectId, { projectName: board.projectName, boards: [board] });
+            let connEntry = grouped.get(board.connectionId);
+            if (!connEntry) {
+                connEntry = { connectionName: board.connectionName, projects: new Map() };
+                grouped.set(board.connectionId, connEntry);
             }
+            let projEntry = connEntry.projects.get(board.projectId);
+            if (!projEntry) {
+                projEntry = { projectName: board.projectName, boards: [] };
+                connEntry.projects.set(board.projectId, projEntry);
+            }
+            projEntry.boards.push(board);
         }
+
         return grouped;
     }, [availableBoards, search]);
+
+    const connectionMap = useMemo(
+        () => new Map(connections.map((c) => [c.id, c.name])),
+        [connections]
+    );
 
     return (
         <div className="space-y-6">
             <h2 className="text-xl font-semibold">Remote Boards</h2>
 
-            {pendingRemoveBoardId !== null && (
+            {pendingRemove !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900 w-full max-w-md mx-4">
                         <h3 className="text-base font-semibold mb-2">Remove board</h3>
@@ -250,7 +283,7 @@ export function BoardsSection() {
                         <div className="flex justify-end gap-3">
                             <button
                                 type="button"
-                                onClick={() => setPendingRemoveBoardId(null)}
+                                onClick={() => setPendingRemove(null)}
                                 className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800 transition-colors"
                             >
                                 Cancel
@@ -258,9 +291,9 @@ export function BoardsSection() {
                             <button
                                 type="button"
                                 onClick={() => {
-                                    const id = pendingRemoveBoardId;
-                                    setPendingRemoveBoardId(null);
-                                    doRemoveBoard(id);
+                                    const { connectionId, boardId } = pendingRemove;
+                                    setPendingRemove(null);
+                                    doRemoveBoard(connectionId, boardId);
                                 }}
                                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors"
                             >
@@ -280,7 +313,7 @@ export function BoardsSection() {
 
                     {pageState === "no-credentials" && (
                         <p className="text-sm text-gray-500 dark:text-gray-400">
-                            Configure your connection first.
+                            Configure a connection first.
                         </p>
                     )}
 
@@ -312,53 +345,61 @@ export function BoardsSection() {
                                 type="search"
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Filter by project or board…"
+                                placeholder="Filter by connection, project or board…"
                                 className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800"
                             />
 
-                            {projectGroups.size === 0 && availableBoards.length === 0 && (
+                            {connectionGroups.size === 0 && availableBoards.length === 0 && (
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    No boards found in your organisation.
+                                    No boards found across your connections.
                                 </p>
                             )}
 
-                            {projectGroups.size === 0 && availableBoards.length > 0 && (
+                            {connectionGroups.size === 0 && availableBoards.length > 0 && (
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
                                     No boards match your search.
                                 </p>
                             )}
 
-                            <div className="space-y-4">
-                                {Array.from(projectGroups.entries()).map(
-                                    ([projectId, { projectName, boards }]) => (
-                                        <div key={projectId}>
-                                            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                                {projectName}
+                            <div className="space-y-6">
+                                {Array.from(connectionGroups.entries()).map(
+                                    ([connectionId, { connectionName, projects }]) => (
+                                        <div key={connectionId}>
+                                            <p className="mb-2 text-s font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                                                {connectionName}
                                             </p>
-                                            <div className="space-y-1">
-                                                {boards.map((board) => {
-                                                    const isSelected = selectedBoardIds.has(
-                                                        board.boardId
-                                                    );
-                                                    return (
-                                                        <div
-                                                            key={board.boardId}
-                                                            className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm dark:border-gray-700"
-                                                        >
-                                                            <span className="flex-1 min-w-0 truncate">
-                                                                {board.teamName}
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleAdd(board)}
-                                                                disabled={isSelected}
-                                                                className="shrink-0 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
-                                                            >
-                                                                Add
-                                                            </button>
+                                            <div className="space-y-4">
+                                                {Array.from(projects.entries()).map(([projectId, { projectName, boards }]) => (
+                                                    <div key={projectId}>
+                                                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                                            {projectName}
+                                                        </p>
+                                                        <div className="space-y-1">
+                                                            {boards.map((board) => {
+                                                                const key = `${board.connectionId}::${board.boardId}`;
+                                                                const isSelected = selectedBoardKeys.has(key);
+                                                                return (
+                                                                    <div
+                                                                        key={key}
+                                                                        className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm dark:border-gray-700"
+                                                                    >
+                                                                        <span className="flex-1 min-w-0 truncate">
+                                                                            {board.teamName}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleAdd(board)}
+                                                                            disabled={isSelected}
+                                                                            className="shrink-0 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 hover:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 dark:text-blue-400 dark:hover:bg-blue-900/20 transition-colors"
+                                                                        >
+                                                                            Add
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    );
-                                                })}
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     )
@@ -385,15 +426,16 @@ export function BoardsSection() {
                             onDragEnd={handleDragEnd}
                         >
                             <SortableContext
-                                items={selectedBoards.map((b) => b.boardId)}
+                                items={selectedBoards.map((b) => `${b.connectionId}::${b.boardId}`)}
                                 strategy={verticalListSortingStrategy}
                             >
                                 <div className="space-y-1">
                                     {selectedBoards.map((board) => (
                                         <SortableBoardItem
-                                            key={board.boardId}
+                                            key={`${board.connectionId}::${board.boardId}`}
                                             board={board}
-                                            isStale={!availableBoardIds.has(board.boardId) && pageState === "loaded"}
+                                            connectionName={connectionMap.get(board.connectionId) ?? board.connectionId}
+                                            isStale={!availableBoardKeys.has(`${board.connectionId}::${board.boardId}`) && pageState === "loaded"}
                                             onRemove={handleRemove}
                                         />
                                     ))}

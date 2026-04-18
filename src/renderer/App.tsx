@@ -7,7 +7,7 @@ import { applyTheme } from "./theme";
 
 export function App() {
     const selectedBoards = useAppStore((s) => s.selectedBoards);
-    const setAzDoCredentials = useAppStore((s) => s.setAzDoCredentials);
+    const setConnections = useAppStore((s) => s.setConnections);
     const setSelectedBoards = useAppStore((s) => s.setSelectedBoards);
     const setBoardColumns = useAppStore((s) => s.setBoardColumns);
     const setCombinedBoardColumns = useAppStore((s) => s.setCombinedBoardColumns);
@@ -16,10 +16,8 @@ export function App() {
 
     // Seed the store from persisted config on startup
     useEffect(() => {
-        window.electron.loadSettings().then(({ orgUrl, pat, selectedBoards: boards }) => {
-            if (orgUrl && pat) {
-                setAzDoCredentials(orgUrl, pat);
-            }
+        window.electron.loadSettings().then(({ connections, selectedBoards: boards }) => {
+            setConnections(connections);
             setSelectedBoards(boards);
         });
         window.electron.loadCombinedBoardColumns().then(setCombinedBoardColumns);
@@ -27,7 +25,7 @@ export function App() {
             setTheme(savedTheme);
             applyTheme(savedTheme);
         });
-    }, [setAzDoCredentials, setSelectedBoards, setCombinedBoardColumns, setTheme]);
+    }, [setConnections, setSelectedBoards, setCombinedBoardColumns, setTheme]);
 
     useEffect(() => {
         window.electron.getBoardColumnsForSelected().then((result) => {
