@@ -1,15 +1,16 @@
 import { create } from "zustand";
-import type { SelectedBoard, BoardColumnInfo, CombinedBoardColumn, ThemePreference, WorkItemCard } from "../../shared/electronAPI";
+import type { ConnectionSummary, SelectedBoard, BoardColumnInfo, CombinedBoardColumn, ThemePreference, WorkItemCard } from "../../shared/electronAPI";
 
 interface AppState {
-    orgUrl: string | null;
-    pat: string | null;
+    connections: ConnectionSummary[];
     selectedBoards: SelectedBoard[];
     boardColumns: BoardColumnInfo[];
     combinedBoardColumns: CombinedBoardColumn[];
     workItems: WorkItemCard[];
     theme: ThemePreference;
-    setAzDoCredentials: (orgUrl: string, pat: string) => void;
+    setConnections: (connections: ConnectionSummary[]) => void;
+    addConnection: (connection: ConnectionSummary) => void;
+    removeConnection: (connectionId: string) => void;
     setSelectedBoards: (boards: SelectedBoard[]) => void;
     setBoardColumns: (columns: BoardColumnInfo[]) => void;
     setCombinedBoardColumns: (columns: CombinedBoardColumn[]) => void;
@@ -18,14 +19,15 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>()((set) => ({
-    orgUrl: null,
-    pat: null,
+    connections: [],
     selectedBoards: [],
     boardColumns: [],
     combinedBoardColumns: [],
     workItems: [],
     theme: "auto",
-    setAzDoCredentials: (orgUrl, pat) => set({ orgUrl, pat }),
+    setConnections: (connections) => set({ connections }),
+    addConnection: (connection) => set((s) => ({ connections: [...s.connections, connection] })),
+    removeConnection: (connectionId) => set((s) => ({ connections: s.connections.filter((c) => c.id !== connectionId) })),
     setSelectedBoards: (boards) => set({ selectedBoards: boards }),
     setBoardColumns: (columns) => set({ boardColumns: columns }),
     setCombinedBoardColumns: (columns) => set({ combinedBoardColumns: columns }),

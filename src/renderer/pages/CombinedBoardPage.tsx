@@ -427,8 +427,7 @@ function formatTime(date: Date): string {
 }
 
 export function CombinedBoardPage() {
-    const orgUrl = useAppStore((s) => s.orgUrl);
-    const pat = useAppStore((s) => s.pat);
+    const connections = useAppStore((s) => s.connections);
     const selectedBoards = useAppStore((s) => s.selectedBoards);
     const combinedBoardColumns = useAppStore((s) => s.combinedBoardColumns);
     const workItems = useAppStore((s) => s.workItems);
@@ -439,8 +438,10 @@ export function CombinedBoardPage() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
     const [selectedCard, setSelectedCard] = useState<WorkItemCard | null>(null);
+    const [failedConnections, setFailedConnections] = useState<string[]>([]);
+    const [warningDismissed, setWarningDismissed] = useState(false);
 
-    const hasCredentials = Boolean(orgUrl && pat);
+    const hasConnections = connections.length > 0;
     const hasBoards = selectedBoards.length > 0;
     const hasColumns = combinedBoardColumns.length > 0;
 
@@ -462,6 +463,12 @@ export function CombinedBoardPage() {
             } else {
                 setWorkItems(result.cards ?? []);
                 setLastRefreshed(new Date());
+                if (result.failedConnections && result.failedConnections.length > 0) {
+                    setFailedConnections(result.failedConnections);
+                    setWarningDismissed(false);
+                } else {
+                    setFailedConnections([]);
+                }
                 if (!background) {
                     setLoadState("loaded");
                 }
@@ -482,7 +489,7 @@ export function CombinedBoardPage() {
     // Initial load on mount (or when guard conditions are met)
     const hasFetchedRef = useRef(false);
     useEffect(() => {
-        if (!hasCredentials || !hasBoards || !hasColumns) return;
+        if (!hasConnections || !hasBoards || !hasColumns) return;
         if (hasFetchedRef.current) return;
         hasFetchedRef.current = true;
 
@@ -493,12 +500,12 @@ export function CombinedBoardPage() {
         } else {
             fetchCards(false);
         }
-    }, [hasCredentials, hasBoards, hasColumns, workItems.length, fetchCards]);
+    }, [hasConnections, hasBoards, hasColumns, workItems.length, fetchCards]);
 
     // 5-minute auto-refresh
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     useEffect(() => {
-        if (!hasCredentials || !hasBoards || !hasColumns) return;
+        if (!hasConnections || !hasBoards || !hasColumns) return;
 
         intervalRef.current = setInterval(() => {
             fetchCards(true);
@@ -507,7 +514,7 @@ export function CombinedBoardPage() {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
         };
-    }, [hasCredentials, hasBoards, hasColumns, fetchCards]);
+    }, [hasConnections, hasBoards, hasColumns, fetchCards]);
 
     // Compute cards per column
     const columnCards = useMemo(() => {
@@ -517,6 +524,7 @@ export function CombinedBoardPage() {
                 const mappingCards = workItems
                     .filter(
                         (item) =>
+                            item.connectionId === mapping.connectionId &&
                             item.boardId === mapping.boardId &&
                             item.columnName.toLowerCase() === mapping.columnName.toLowerCase()
                     )
@@ -528,18 +536,18 @@ export function CombinedBoardPage() {
     }, [combinedBoardColumns, workItems]);
 
     // Guard states
-    if (!hasCredentials) {
+    if (!hasConnections) {
         return (
             <div className="flex items-center justify-center h-full p-8">
                 <div className="text-center space-y-2">
                     <p className="text-gray-600 dark:text-gray-400">
-                        Configure your connection in Settings to use the Combined Board.
+                        Configure a connection in Settings to use the Combined Board.
                     </p>
                     <Link
                         to="/settings"
                         className="text-sm text-blue-600 hover:underline dark:text-blue-400"
                     >
-                        Go to Settings → Connection
+                        Go to Settings → Connections
                     </Link>
                 </div>
             </div>
@@ -617,6 +625,30 @@ export function CombinedBoardPage() {
                     Refresh
                 </button>
             </div>
+
+            {/* Failed connections warning banner */}
+            {failedConnections.length > 0 && !warningDismissed && (
+                <div className="shrink-0 flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span className="flex-1">
+                        Could not load items from:{" "}
+                        <strong>{failedConnections.join(", ")}</strong>. Re-test these connections in{" "}
+                        <Link to="/settings" className="underline hover:opacity-80">Settings → Connections</Link>.
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setWarningDismissed(true)}
+                        className="shrink-0 text-amber-600 dark:text-amber-400 hover:opacity-80"
+                        aria-label="Dismiss warning"
+                    >
+                        ×
+                    </button>
+                </div>
+            )}
 
             {/* Board area */}
             <div className="flex-1 overflow-hidden relative">

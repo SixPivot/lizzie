@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useAppStore } from "../../store/appStore";
 import type { BoardColumnInfo, CombinedBoardColumn, CombinedBoardColumnMapping } from "../../../shared/electronAPI";
 import { WarningIcon } from "../Shared/WarningIcon";
+import HamburgerIcon from "../Shared/HamburgerIcon";
 
 // ---------------------------------------------------------------------------
 // Pure logic helpers
@@ -60,7 +61,7 @@ export function buildMappedColumnIds(columns: CombinedBoardColumn[]): Set<string
     const mapped = new Set<string>();
     for (const col of columns) {
         for (const m of col.sourceMappings) {
-            mapped.add(`${m.boardId}::${m.columnId}`);
+            mapped.add(`${m.connectionId}::${m.boardId}::${m.columnId}`);
         }
     }
     return mapped;
@@ -291,11 +292,7 @@ function SortableMappingRow({ mappingKey, mapping: m, isStale, columnId, onRemov
                 className="shrink-0 cursor-grab text-gray-300 hover:text-gray-500 dark:hover:text-gray-400 touch-none"
                 aria-label="Drag to reorder"
             >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="3" y1="8" x2="21" y2="8" />
-                    <line x1="3" y1="12" x2="21" y2="12" />
-                    <line x1="3" y1="16" x2="21" y2="16" />
-                </svg>
+                <HamburgerIcon width="12" height="12" />
             </button>
             <span className="flex-1 min-w-0 truncate">
                 <span className="text-gray-400 dark:text-gray-500">
@@ -381,10 +378,10 @@ function SortableColumnCard({
         const { active, over } = event;
         if (over && active.id !== over.id) {
             const oldIndex = column.sourceMappings.findIndex(
-                (m) => `${m.boardId}::${m.columnId}` === active.id
+                (m) => `${m.connectionId}::${m.boardId}::${m.columnId}` === active.id
             );
             const newIndex = column.sourceMappings.findIndex(
-                (m) => `${m.boardId}::${m.columnId}` === over.id
+                (m) => `${m.connectionId}::${m.boardId}::${m.columnId}` === over.id
             );
             if (oldIndex !== -1 && newIndex !== -1) {
                 onReorderMappings(column.id, oldIndex, newIndex);
@@ -411,21 +408,7 @@ function SortableColumnCard({
                     className="shrink-0 cursor-grab text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 touch-none"
                     aria-label="Drag to reorder"
                 >
-                    <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                    >
-                        <line x1="3" y1="8" x2="21" y2="8" />
-                        <line x1="3" y1="12" x2="21" y2="12" />
-                        <line x1="3" y1="16" x2="21" y2="16" />
-                    </svg>
+                    <HamburgerIcon />
                 </button>
 
                 {isEditingName ? (
@@ -640,8 +623,7 @@ export function CombinedBoardSection() {
     const combinedBoardColumns = useAppStore((s) => s.combinedBoardColumns);
     const setCombinedBoardColumns = useAppStore((s) => s.setCombinedBoardColumns);
     const selectedBoards = useAppStore((s) => s.selectedBoards);
-    const orgUrl = useAppStore((s) => s.orgUrl);
-    const pat = useAppStore((s) => s.pat);
+    const connections = useAppStore((s) => s.connections);
 
     const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
     const [isDuplicateName, setIsDuplicateName] = useState(false);
@@ -656,13 +638,11 @@ export function CombinedBoardSection() {
     );
 
     // Detect credentials / boards guard conditions by checking the store
-    // (App.tsx loads settings into the store on mount)
-    const hasCredentials = Boolean(orgUrl && pat);
     const hasBoards = selectedBoards.length > 0;
 
-    // Derive the set of fetched column keys to detect stale mappings
+    // Derive the set of fetched column keys to detect stale mappings (composite: connectionId::boardId::columnId)
     const fetchedColumnKeys = useMemo(
-        () => new Set(boardColumns.map((c) => `${c.boardId}::${c.columnId}`)),
+        () => new Set(boardColumns.map((c) => `${c.connectionId}::${c.boardId}::${c.columnId}`)),
         [boardColumns]
     );
 
@@ -717,6 +697,7 @@ export function CombinedBoardSection() {
 
     function handleSelectSourceColumn(boardColumn: BoardColumnInfo) {
         const mapping: CombinedBoardColumnMapping = {
+            connectionId: boardColumn.connectionId,
             boardId: boardColumn.boardId,
             boardName: boardColumn.boardName,
             projectId: boardColumn.projectId,
@@ -730,7 +711,7 @@ export function CombinedBoardSection() {
     }
 
     function handleRemoveMapping(columnId: string, mappingKey: string) {
-        const [boardId, colId] = mappingKey.split("::");
+        const [connectionId, boardId, colId] = mappingKey.split("::");
         persist(
             combinedBoardColumns.map((col) =>
                 col.id !== columnId
@@ -738,7 +719,7 @@ export function CombinedBoardSection() {
                     : {
                           ...col,
                           sourceMappings: col.sourceMappings.filter(
-                              (m) => !(m.boardId === boardId && m.columnId === colId)
+                              (m) => !(m.connectionId === connectionId && m.boardId === boardId && m.columnId === colId)
                           ),
                       }
             )
@@ -780,6 +761,7 @@ export function CombinedBoardSection() {
     function handleAddColumnFromRemote(boardColumn: BoardColumnInfo) {
         setAddingColumn(false);
         const mapping: CombinedBoardColumnMapping = {
+            connectionId: boardColumn.connectionId,
             boardId: boardColumn.boardId,
             boardName: boardColumn.boardName,
             projectId: boardColumn.projectId,
@@ -792,13 +774,13 @@ export function CombinedBoardSection() {
         persist(resolveAutoAssign(combinedBoardColumns, mapping, generateId()));
     }
 
-    // Guard: no credentials or no boards
-    if (!hasCredentials || !hasBoards) {
+    // Guard: no connections or no boards
+    if (connections.length === 0 || !hasBoards) {
         return (
             <div className="flex-1 p-8 space-y-4">
                 <h2 className="text-xl font-semibold">Combined Board</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Configure your connection and select at least one remote board before setting up the combined board.
+                    Configure a connection and select at least one remote board before setting up the combined board.
                 </p>
             </div>
         );

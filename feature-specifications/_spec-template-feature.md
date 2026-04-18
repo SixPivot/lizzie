@@ -18,6 +18,7 @@ After I answer, produce the specification including:
   - Key decisions – recorded with rationale
   - Permissions matrix – if applicable
   - User stories – one or more, concise
+  - Input validation
   - Diagrams – sequence/flow/state where helpful (Mermaid)
   - Acceptance criteria – comprehensive, in Gherkin syntax
   - Manual test steps – for QA
@@ -54,7 +55,7 @@ HUMAN: Fill this in yourself, then let AI finesse it
 
 AI: Only if appropriate
 
-## Validation
+## Input validation
 
 AI: Optional
 
