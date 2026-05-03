@@ -22,6 +22,12 @@ const api: ElectronAPI = {
     openExternal: (url) => ipcRenderer.send("shell:openExternal", url),
     loadTheme: () => ipcRenderer.invoke("theme:load"),
     saveTheme: (theme) => ipcRenderer.invoke("theme:save", theme),
+    system: {
+        exportConfig: () => ipcRenderer.invoke("system:exportConfig"),
+        selectImportFile: () => ipcRenderer.invoke("system:selectImportFile"),
+        applyImportedConfig: (args) => ipcRenderer.invoke("system:applyImportedConfig", args),
+        clearConfig: () => ipcRenderer.invoke("system:clearConfig"),
+    },
 };
 
 contextBridge.exposeInMainWorld("electron", api);

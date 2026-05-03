@@ -3,14 +3,16 @@ import { ConnectionSection } from "../components/Settings/ConnectionSection";
 import { BoardsSection } from "../components/Settings/BoardsSection";
 import { CombinedBoardSection } from "../components/Settings/CombinedBoardSection";
 import { AppearanceSection } from "../components/Settings/AppearanceSection";
+import { SystemSection } from "../components/Settings/SystemSection";
 
-type SettingsSection = "appearance" | "connection" | "boards" | "combined-board";
+type SettingsSection = "appearance" | "connection" | "boards" | "combined-board" | "system";
 
 const sections: { id: SettingsSection; label: string }[] = [
     { id: "appearance", label: "Appearance" },
     { id: "connection", label: "Connection" },
     { id: "boards", label: "Remote Boards" },
     { id: "combined-board", label: "Combined Board" },
+    { id: "system", label: "System" },
 ];
 
 export function SettingsPage() {
@@ -60,9 +62,15 @@ export function SettingsPage() {
                     </div>
                 )}
                 {activeSection === "combined-board" && <CombinedBoardSection />}
+                {activeSection === "system" && (
+                    <div className="flex-1 overflow-auto p-8">
+                        <SystemSection />
+                    </div>
+                )}
             </main>
         </div>
     );
 }
+
 
 

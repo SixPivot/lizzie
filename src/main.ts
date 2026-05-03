@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import started from "electron-squirrel-startup";
 import {
@@ -16,8 +17,13 @@ import {
     saveWindowBounds,
     loadTheme,
     saveTheme,
+    exportConfigFile,
+    importConfigFile,
+    clearConfigFile,
+    isImportedConfigFile,
     type SelectedBoard,
     type CombinedBoardColumn,
+    type ImportedConfigFile,
     type ThemePreference,
 } from "./config";
 import { testConnection, fetchAvailableBoards, fetchBoardColumns, fetchWorkItemsForBoard } from "./azdo";
@@ -273,6 +279,101 @@ ipcMain.handle("theme:load", () => {
 
 ipcMain.handle("theme:save", (_, theme: ThemePreference) => {
   saveTheme(theme);
+});
+
+// System IPC handlers
+ipcMain.handle("system:exportConfig", async () => {
+  const target = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow() ?? undefined, {
+    title: "Export Lizzie configuration",
+    defaultPath: "lizzie-config.json",
+    filters: [{ name: "JSON Files", extensions: ["json"] }],
+  });
+
+  if (target.canceled || !target.filePath) {
+    return { success: false, canceled: true };
+  }
+
+  try {
+    const exported = exportConfigFile();
+    fs.writeFileSync(target.filePath, JSON.stringify(exported, null, 2), "utf-8");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Could not export configuration to the selected location." };
+  }
+});
+
+ipcMain.handle("system:selectImportFile", async () => {
+  const target = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow() ?? undefined, {
+    title: "Import Lizzie configuration",
+    properties: ["openFile"],
+    filters: [{ name: "JSON Files", extensions: ["json"] }],
+  });
+
+  if (target.canceled || target.filePaths.length === 0) {
+    return { success: false, canceled: true };
+  }
+
+  try {
+    const raw = fs.readFileSync(target.filePaths[0], "utf-8");
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!isImportedConfigFile(parsed)) {
+      return { success: false, error: "The selected file is not a valid Lizzie configuration export." };
+    }
+
+    const existingOrgUrls = new Set(loadConnections().map((connection) => connection.orgUrl.trim().toLowerCase()));
+    const connectionsRequiringPat = parsed.connections.filter(
+      (connection) => !existingOrgUrls.has(connection.orgUrl.trim().toLowerCase())
+    );
+
+    return {
+      success: true,
+      imported: parsed,
+      connectionsRequiringPat,
+    };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return { success: false, error: "The selected file is not valid JSON." };
+    }
+
+    return { success: false, error: "Could not read the selected configuration file." };
+  }
+});
+
+ipcMain.handle("system:applyImportedConfig", async (_, { imported, newConnectionPatsByOrgUrl }: { imported: ImportedConfigFile; newConnectionPatsByOrgUrl: Record<string, string> }) => {
+  if (!isImportedConfigFile(imported)) {
+    return { success: false, error: "The selected file is not a valid Lizzie configuration export." };
+  }
+
+  const existingOrgUrls = new Set(loadConnections().map((connection) => connection.orgUrl.trim().toLowerCase()));
+  for (const connection of imported.connections) {
+    const normalisedOrgUrl = connection.orgUrl.trim().toLowerCase();
+    if (existingOrgUrls.has(normalisedOrgUrl)) {
+      continue;
+    }
+
+    const pat = newConnectionPatsByOrgUrl[normalisedOrgUrl] ?? newConnectionPatsByOrgUrl[connection.orgUrl];
+    if (!pat?.trim()) {
+      return { success: false, error: "A Personal Access Token is required to import this connection." };
+    }
+
+    const result = await testConnection({ orgUrl: connection.orgUrl, pat: pat.trim() });
+    if (!result.success) {
+      return { success: false, error: result.error ?? "Could not connect to Azure DevOps. Check your PAT and try again." };
+    }
+  }
+
+  try {
+    importConfigFile(imported, newConnectionPatsByOrgUrl);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("system:clearConfig", () => {
+  clearConfigFile();
+  return { success: true };
 });
 
 // This method will be called when Electron has finished

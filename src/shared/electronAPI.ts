@@ -53,6 +53,19 @@ export interface CombinedBoardColumn {
     sourceMappings: CombinedBoardColumnMapping[];
 }
 
+export interface ImportedConnection {
+    id: string;
+    name: string;
+    orgUrl: string;
+}
+
+export interface ImportedConfigFile {
+    version: 1;
+    connections: ImportedConnection[];
+    selectedBoards: SelectedBoard[];
+    combinedBoardColumns: CombinedBoardColumn[];
+}
+
 export interface WorkItemCard {
     id: number;
     connectionId: string;
@@ -88,4 +101,10 @@ export interface ElectronAPI {
     openExternal: (url: string) => void;
     loadTheme: () => Promise<ThemePreference>;
     saveTheme: (theme: ThemePreference) => Promise<void>;
+    system: {
+        exportConfig: () => Promise<{ success: boolean; canceled?: boolean; error?: string }>;
+        selectImportFile: () => Promise<{ success: boolean; canceled?: boolean; imported?: ImportedConfigFile; connectionsRequiringPat?: ImportedConnection[]; error?: string }>;
+        applyImportedConfig: (args: { imported: ImportedConfigFile; newConnectionPatsByOrgUrl: Record<string, string> }) => Promise<{ success: boolean; error?: string }>;
+        clearConfig: () => Promise<{ success: boolean }>;
+    };
 }

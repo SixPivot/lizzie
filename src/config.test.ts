@@ -416,3 +416,237 @@ describe("saveCombinedBoardColumns", () => {
         expect(written.combinedBoardColumns).toEqual(updated);
     });
 });
+
+// ---------------------------------------------------------------------------
+// exportConfigFile / importConfigFile / clearConfigFile
+// ---------------------------------------------------------------------------
+
+describe("exportConfigFile", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        existsSync.mockReturnValue(true);
+        writeFileSync.mockClear();
+    });
+
+    it("exports shareable config without PATs, theme, or window bounds", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({
+            connections: [
+                { id: "c1", name: "Org A", orgUrl: "https://dev.azure.com/a", encryptedPat: "secret" },
+            ],
+            selectedBoards: [
+                { connectionId: "c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+            ],
+            combinedBoardColumns: [
+                {
+                    id: "col-1",
+                    name: "Backlog",
+                    sourceMappings: [
+                        { connectionId: "c1", boardId: "b1", boardName: "Stories", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", columnId: "m1", columnName: "New" },
+                    ],
+                },
+            ],
+            theme: "dark",
+            windowBounds: { x: 1, y: 2, width: 3, height: 4 },
+        }));
+
+        const { exportConfigFile } = await importConfig();
+        const result = exportConfigFile();
+
+        expect(result).toEqual({
+            version: 1,
+            connections: [{ id: "c1", name: "Org A", orgUrl: "https://dev.azure.com/a" }],
+            selectedBoards: [
+                { connectionId: "c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+            ],
+            combinedBoardColumns: [
+                {
+                    id: "col-1",
+                    name: "Backlog",
+                    sourceMappings: [
+                        { connectionId: "c1", boardId: "b1", boardName: "Stories", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", columnId: "m1", columnName: "New" },
+                    ],
+                },
+            ],
+        });
+        expect((result as Record<string, unknown>).theme).toBeUndefined();
+        expect((result as Record<string, unknown>).windowBounds).toBeUndefined();
+    });
+});
+
+describe("importConfigFile", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        existsSync.mockReturnValue(true);
+        writeFileSync.mockClear();
+        isEncryptionAvailable.mockReturnValue(true);
+        encryptString.mockImplementation((value: string) => Buffer.from(`enc:${value}`, "utf-8"));
+    });
+
+    it("reuses an existing local connection by orgUrl and merges boards without duplicates", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({
+            connections: [
+                { id: "local-c1", name: "Existing", orgUrl: "https://dev.azure.com/a", encryptedPat: "secret" },
+            ],
+            selectedBoards: [
+                { connectionId: "local-c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+            ],
+            combinedBoardColumns: [],
+        }));
+
+        const { importConfigFile } = await importConfig();
+        importConfigFile({
+            version: 1,
+            connections: [{ id: "import-c1", name: "Imported", orgUrl: "https://DEV.AZURE.COM/a" }],
+            selectedBoards: [
+                { connectionId: "import-c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+                { connectionId: "import-c1", projectId: "p2", projectName: "Other", teamId: "t2", teamName: "Other Team", boardId: "b2", boardName: "Stories" },
+            ],
+            combinedBoardColumns: [],
+        }, {});
+
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.connections).toHaveLength(1);
+        expect(written.selectedBoards).toEqual([
+            { connectionId: "local-c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+            { connectionId: "local-c1", projectId: "p2", projectName: "Other", teamId: "t2", teamName: "Other Team", boardId: "b2", boardName: "Stories" },
+        ]);
+    });
+
+    it("creates a new connection with the provided PAT for a new orgUrl", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({ connections: [], selectedBoards: [], combinedBoardColumns: [] }));
+        const { importConfigFile } = await importConfig();
+
+        importConfigFile({
+            version: 1,
+            connections: [{ id: "import-c1", name: "Imported", orgUrl: "https://dev.azure.com/new-org" }],
+            selectedBoards: [],
+            combinedBoardColumns: [],
+        }, { "https://dev.azure.com/new-org": "pat-123" });
+
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.connections).toHaveLength(1);
+        expect(written.connections[0]).toMatchObject({
+            id: "test-uuid-1234",
+            name: "Imported",
+            orgUrl: "https://dev.azure.com/new-org",
+        });
+        expect(written.connections[0].encryptedPat).toBe(Buffer.from("enc:pat-123", "utf-8").toString("base64"));
+    });
+
+    it("merges imported mappings into an existing same-named combined column", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({
+            connections: [{ id: "local-c1", name: "Existing", orgUrl: "https://dev.azure.com/a", encryptedPat: "secret" }],
+            selectedBoards: [],
+            combinedBoardColumns: [
+                {
+                    id: "local-col-1",
+                    name: "Backlog",
+                    sourceMappings: [
+                        { connectionId: "local-c1", boardId: "b1", boardName: "Stories", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", columnId: "c1", columnName: "New" },
+                    ],
+                },
+            ],
+        }));
+        const { importConfigFile } = await importConfig();
+
+        importConfigFile({
+            version: 1,
+            connections: [{ id: "import-c1", name: "Imported", orgUrl: "https://dev.azure.com/a" }],
+            selectedBoards: [],
+            combinedBoardColumns: [
+                {
+                    id: "import-col-1",
+                    name: "Backlog",
+                    sourceMappings: [
+                        { connectionId: "import-c1", boardId: "b2", boardName: "Stories", projectId: "p2", projectName: "Other", teamId: "t2", teamName: "Other Team", columnId: "c2", columnName: "Committed" },
+                    ],
+                },
+            ],
+        }, {});
+
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.combinedBoardColumns).toHaveLength(1);
+        expect(written.combinedBoardColumns[0].id).toBe("local-col-1");
+        expect(written.combinedBoardColumns[0].sourceMappings).toHaveLength(2);
+    });
+
+    it("does not duplicate a mapping that already exists under another local column", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({
+            connections: [{ id: "local-c1", name: "Existing", orgUrl: "https://dev.azure.com/a", encryptedPat: "secret" }],
+            selectedBoards: [],
+            combinedBoardColumns: [
+                {
+                    id: "local-col-1",
+                    name: "Doing",
+                    sourceMappings: [
+                        { connectionId: "local-c1", boardId: "b1", boardName: "Stories", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", columnId: "c1", columnName: "Active" },
+                    ],
+                },
+            ],
+        }));
+        const { importConfigFile } = await importConfig();
+
+        importConfigFile({
+            version: 1,
+            connections: [{ id: "import-c1", name: "Imported", orgUrl: "https://dev.azure.com/a" }],
+            selectedBoards: [],
+            combinedBoardColumns: [
+                {
+                    id: "import-col-1",
+                    name: "In Progress",
+                    sourceMappings: [
+                        { connectionId: "import-c1", boardId: "b1", boardName: "Stories", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", columnId: "c1", columnName: "Active" },
+                    ],
+                },
+            ],
+        }, {});
+
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written.combinedBoardColumns).toHaveLength(1);
+        expect(written.combinedBoardColumns[0].name).toBe("Doing");
+        expect(written.combinedBoardColumns[0].sourceMappings).toHaveLength(1);
+    });
+
+    it("throws when a new imported connection has no provided PAT", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({ connections: [], selectedBoards: [], combinedBoardColumns: [] }));
+        const { importConfigFile } = await importConfig();
+
+        expect(() =>
+            importConfigFile({
+                version: 1,
+                connections: [{ id: "import-c1", name: "Imported", orgUrl: "https://dev.azure.com/new-org" }],
+                selectedBoards: [],
+                combinedBoardColumns: [],
+            }, {})
+        ).toThrow("A Personal Access Token is required to import this connection.");
+    });
+});
+
+describe("clearConfigFile", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        existsSync.mockReturnValue(true);
+        writeFileSync.mockClear();
+    });
+
+    it("removes connections, boards, and combined board columns while preserving theme and window bounds", async () => {
+        readFileSync.mockReturnValue(JSON.stringify({
+            connections: [{ id: "c1", name: "Org A", orgUrl: "https://dev.azure.com/a", encryptedPat: "secret" }],
+            selectedBoards: [
+                { connectionId: "c1", projectId: "p1", projectName: "Project", teamId: "t1", teamName: "Team", boardId: "b1", boardName: "Stories" },
+            ],
+            combinedBoardColumns: [{ id: "col-1", name: "Backlog", sourceMappings: [] }],
+            theme: "dark",
+            windowBounds: { x: 1, y: 2, width: 3, height: 4 },
+        }));
+
+        const { clearConfigFile } = await importConfig();
+        clearConfigFile();
+
+        const written = JSON.parse(writeFileSync.mock.calls[0][1] as string);
+        expect(written).toEqual({
+            theme: "dark",
+            windowBounds: { x: 1, y: 2, width: 3, height: 4 },
+        });
+    });
+});

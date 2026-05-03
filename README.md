@@ -1,6 +1,6 @@
 # Lizzie
 
-View multiple Azure DevOps boards (from multiple orgranizations) in a single consolidated view. Implemented as an Electron app
+View multiple Azure DevOps boards (from multiple organizations) in a single consolidated view. Implemented as an Electron app
 
 ## Key decisions
 

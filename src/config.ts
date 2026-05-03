@@ -51,6 +51,19 @@ export interface CombinedBoardColumn {
     sourceMappings: CombinedBoardColumnMapping[];
 }
 
+export interface ImportedConnection {
+    id: string;
+    name: string;
+    orgUrl: string;
+}
+
+export interface ImportedConfigFile {
+    version: 1;
+    connections: ImportedConnection[];
+    selectedBoards: SelectedBoard[];
+    combinedBoardColumns: CombinedBoardColumn[];
+}
+
 export type ThemePreference = "light" | "dark" | "auto";
 
 interface ConfigFile {
@@ -86,6 +99,59 @@ function readConfigFile(): ConfigFile {
 function writeConfigFile(file: ConfigFile): void {
     const configPath = getConfigPath();
     fs.writeFileSync(configPath, JSON.stringify(file, null, 2), "utf-8");
+}
+
+function cloneCombinedBoardColumns(columns: CombinedBoardColumn[]): CombinedBoardColumn[] {
+    return columns.map((column) => ({
+        ...column,
+        sourceMappings: column.sourceMappings.map((mapping) => ({ ...mapping })),
+    }));
+}
+
+function normaliseOrgUrl(orgUrl: string): string {
+    return orgUrl.trim().toLowerCase();
+}
+
+function buildSelectedBoardKey(board: Pick<SelectedBoard, "connectionId" | "boardId">): string {
+    return `${board.connectionId}::${board.boardId}`;
+}
+
+function buildSourceMappingKey(mapping: Pick<CombinedBoardColumnMapping, "connectionId" | "boardId" | "columnId">): string {
+    return `${mapping.connectionId}::${mapping.boardId}::${mapping.columnId}`;
+}
+
+function isValidHttpsOrgUrl(orgUrl: string): boolean {
+    try {
+        const parsed = new URL(orgUrl);
+        return parsed.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
+export function isImportedConfigFile(value: unknown): value is ImportedConfigFile {
+    if (!value || typeof value !== "object") {
+        return false;
+    }
+
+    const candidate = value as Partial<ImportedConfigFile>;
+
+    if (candidate.version !== 1) {
+        return false;
+    }
+
+    if (!Array.isArray(candidate.connections) || !Array.isArray(candidate.selectedBoards) || !Array.isArray(candidate.combinedBoardColumns)) {
+        return false;
+    }
+
+    return candidate.connections.every(
+        (connection) =>
+            connection &&
+            typeof connection === "object" &&
+            typeof connection.id === "string" &&
+            typeof connection.name === "string" &&
+            typeof connection.orgUrl === "string"
+    );
 }
 
 function encryptPat(pat: string): string {
@@ -209,6 +275,152 @@ export function removeConnection(connectionId: string): void {
         sourceMappings: col.sourceMappings.filter((m) => m.connectionId !== connectionId),
     }));
     writeConfigFile({ ...file, connections, selectedBoards, combinedBoardColumns });
+}
+
+export function exportConfigFile(): ImportedConfigFile {
+    const file = readAndMigrateConfigFile();
+    return {
+        version: 1,
+        connections: (file.connections ?? []).map(({ id, name, orgUrl }) => ({ id, name, orgUrl })),
+        selectedBoards: (file.selectedBoards ?? []).map((board) => ({ ...board })),
+        combinedBoardColumns: cloneCombinedBoardColumns(file.combinedBoardColumns ?? []),
+    };
+}
+
+export function importConfigFile(imported: ImportedConfigFile, newConnectionPatsByOrgUrl: Record<string, string>): void {
+    if (!isImportedConfigFile(imported)) {
+        throw new Error("The selected file is not a valid Lizzie configuration export.");
+    }
+
+    for (const connection of imported.connections) {
+        if (!isValidHttpsOrgUrl(connection.orgUrl)) {
+            throw new Error("One or more imported connections have an invalid organisation URL.");
+        }
+    }
+
+    const file = readAndMigrateConfigFile();
+    const currentConnections = [...(file.connections ?? [])];
+    const nextConnections = [...currentConnections];
+    const importedConnectionToLocalId = new Map<string, string>();
+    const existingConnectionsByOrgUrl = new Map(
+        currentConnections.map((connection) => [normaliseOrgUrl(connection.orgUrl), connection])
+    );
+
+    for (const importedConnection of imported.connections) {
+        const normalisedOrgUrl = normaliseOrgUrl(importedConnection.orgUrl);
+        const existingConnection = existingConnectionsByOrgUrl.get(normalisedOrgUrl);
+
+        if (existingConnection) {
+            importedConnectionToLocalId.set(importedConnection.id, existingConnection.id);
+            continue;
+        }
+
+        const providedPat = newConnectionPatsByOrgUrl[normalisedOrgUrl] ?? newConnectionPatsByOrgUrl[importedConnection.orgUrl];
+        if (!providedPat?.trim()) {
+            throw new Error("A Personal Access Token is required to import this connection.");
+        }
+
+        const newConnectionId = randomUUID();
+        const newConnection: Connection = {
+            id: newConnectionId,
+            name: importedConnection.name,
+            orgUrl: importedConnection.orgUrl,
+            encryptedPat: encryptPat(providedPat.trim()),
+        };
+
+        nextConnections.push(newConnection);
+        existingConnectionsByOrgUrl.set(normalisedOrgUrl, newConnection);
+        importedConnectionToLocalId.set(importedConnection.id, newConnectionId);
+    }
+
+    const nextSelectedBoards = [...(file.selectedBoards ?? [])];
+    const selectedBoardKeys = new Set(nextSelectedBoards.map(buildSelectedBoardKey));
+
+    for (const importedBoard of imported.selectedBoards) {
+        const mappedConnectionId = importedConnectionToLocalId.get(importedBoard.connectionId);
+        if (!mappedConnectionId) {
+            throw new Error("The selected file is not a valid Lizzie configuration export.");
+        }
+
+        const remappedBoard: SelectedBoard = {
+            ...importedBoard,
+            connectionId: mappedConnectionId,
+        };
+
+        const boardKey = buildSelectedBoardKey(remappedBoard);
+        if (selectedBoardKeys.has(boardKey)) {
+            continue;
+        }
+
+        nextSelectedBoards.push(remappedBoard);
+        selectedBoardKeys.add(boardKey);
+    }
+
+    const nextCombinedBoardColumns = cloneCombinedBoardColumns(file.combinedBoardColumns ?? []);
+    const mappingOwnerByKey = new Map<string, string>();
+
+    for (const column of nextCombinedBoardColumns) {
+        for (const mapping of column.sourceMappings) {
+            mappingOwnerByKey.set(buildSourceMappingKey(mapping), column.id);
+        }
+    }
+
+    for (const importedColumn of imported.combinedBoardColumns) {
+        const remappedMappings = importedColumn.sourceMappings.map((mapping) => {
+            const mappedConnectionId = importedConnectionToLocalId.get(mapping.connectionId);
+            if (!mappedConnectionId) {
+                throw new Error("The selected file is not a valid Lizzie configuration export.");
+            }
+
+            return {
+                ...mapping,
+                connectionId: mappedConnectionId,
+            };
+        });
+
+        const newMappings = remappedMappings.filter((mapping) => !mappingOwnerByKey.has(buildSourceMappingKey(mapping)));
+        if (newMappings.length === 0) {
+            continue;
+        }
+
+        const existingColumn = nextCombinedBoardColumns.find(
+            (column) => column.name.toLowerCase() === importedColumn.name.toLowerCase()
+        );
+
+        if (existingColumn) {
+            existingColumn.sourceMappings.push(...newMappings);
+            for (const mapping of newMappings) {
+                mappingOwnerByKey.set(buildSourceMappingKey(mapping), existingColumn.id);
+            }
+            continue;
+        }
+
+        const newColumnId = randomUUID();
+        nextCombinedBoardColumns.push({
+            id: newColumnId,
+            name: importedColumn.name,
+            sourceMappings: newMappings,
+        });
+
+        for (const mapping of newMappings) {
+            mappingOwnerByKey.set(buildSourceMappingKey(mapping), newColumnId);
+        }
+    }
+
+    writeConfigFile({
+        ...file,
+        connections: nextConnections,
+        selectedBoards: nextSelectedBoards,
+        combinedBoardColumns: nextCombinedBoardColumns,
+    });
+}
+
+export function clearConfigFile(): void {
+    const file = readAndMigrateConfigFile();
+    writeConfigFile({
+        theme: file.theme,
+        windowBounds: file.windowBounds,
+    });
 }
 
 // ---------------------------------------------------------------------------
