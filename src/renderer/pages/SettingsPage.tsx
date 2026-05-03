@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ConnectionSection } from "../components/Settings/ConnectionSection";
 import { BoardsSection } from "../components/Settings/BoardsSection";
 import { CombinedBoardSection } from "../components/Settings/CombinedBoardSection";
@@ -16,7 +17,9 @@ const sections: { id: SettingsSection; label: string }[] = [
 ];
 
 export function SettingsPage() {
-    const [activeSection, setActiveSection] = useState<SettingsSection>("appearance");
+    const [searchParams] = useSearchParams();
+    const initialSection = (searchParams.get("section") as SettingsSection | null) ?? "appearance";
+    const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 
     return (
         <div className="flex h-full">

@@ -575,7 +575,7 @@ export function CombinedBoardPage() {
                         Configure a connection in Settings to use the Combined Board.
                     </p>
                     <Link
-                        to="/settings"
+                        to="/settings?section=connection"
                         className="text-sm text-blue-600 hover:underline dark:text-blue-400"
                     >
                         Go to Settings → Connections
