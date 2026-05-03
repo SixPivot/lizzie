@@ -405,7 +405,7 @@ function BoardColumn({ column, cards, error, onCardClick }: BoardColumnProps) {
                 ) : (
                     cards.map((card) => (
                         <WorkItemCardComponent
-                            key={`${card.boardId}-${card.id}`}
+                            key={buildWorkItemCardKey(card)}
                             card={card}
                             onClick={onCardClick}
                         />
@@ -424,6 +424,10 @@ type LoadState = "idle" | "loading" | "error" | "loaded";
 
 function formatTime(date: Date): string {
     return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+export function buildWorkItemCardKey(card: Pick<WorkItemCard, "connectionId" | "boardId" | "id">): string {
+    return `${card.connectionId}::${card.boardId}::${card.id}`;
 }
 
 export function CombinedBoardPage() {

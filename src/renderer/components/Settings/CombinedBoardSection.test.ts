@@ -3,8 +3,10 @@ import {
     resolveAutoAssign,
     isDuplicateColumnName,
     buildMappedColumnIds,
+    buildBoardColumnKey,
+    filterAvailableBoardColumns,
 } from "./CombinedBoardSection";
-import type { CombinedBoardColumn, CombinedBoardColumnMapping } from "../../../shared/electronAPI";
+import type { BoardColumnInfo, CombinedBoardColumn, CombinedBoardColumnMapping } from "../../../shared/electronAPI";
 
 function makeColumn(overrides: Partial<CombinedBoardColumn> = {}): CombinedBoardColumn {
     return {
@@ -16,6 +18,21 @@ function makeColumn(overrides: Partial<CombinedBoardColumn> = {}): CombinedBoard
 }
 
 function makeMapping(overrides: Partial<CombinedBoardColumnMapping> = {}): CombinedBoardColumnMapping {
+    return {
+        connectionId: "conn-1",
+        boardId: "board-1",
+        boardName: "Stories",
+        projectId: "proj-1",
+        projectName: "Alpha",
+        teamId: "team-1",
+        teamName: "Alpha Team",
+        columnId: "c-1",
+        columnName: "Backlog",
+        ...overrides,
+    };
+}
+
+function makeBoardColumn(overrides: Partial<BoardColumnInfo> = {}): BoardColumnInfo {
     return {
         connectionId: "conn-1",
         boardId: "board-1",
@@ -157,5 +174,19 @@ describe("buildMappedColumnIds", () => {
         const mappedIds = buildMappedColumnIds(columns);
         expect(mappedIds.has("conn-1::b1::c1")).toBe(true);
         expect(mappedIds.has("conn-1::b1::c2")).toBe(false);
+    });
+});
+
+describe("filterAvailableBoardColumns", () => {
+    it("keeps a same boardId/columnId from another connection selectable", () => {
+        const mappedIds = new Set([buildBoardColumnKey(makeBoardColumn({ connectionId: "conn-1", boardId: "b1", columnId: "c1" }))]);
+        const boardColumns = [
+            makeBoardColumn({ connectionId: "conn-1", boardId: "b1", columnId: "c1", columnName: "Doing" }),
+            makeBoardColumn({ connectionId: "conn-2", boardId: "b1", columnId: "c1", columnName: "Doing" }),
+        ];
+
+        const result = filterAvailableBoardColumns(boardColumns, mappedIds, "");
+
+        expect(result).toEqual([boardColumns[1]]);
     });
 });

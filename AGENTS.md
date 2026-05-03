@@ -2,7 +2,7 @@
 
 ## Project overview
 
-An Electron app that provides a layer over Azure DevOps (AzDO). It syncs AzDO work items to/from local Markdown files, and provides a consolidated board view across multiple AzDO projects. No server component — the app is self-contained. See `README.md` for key decisions and `feature-specifications/` for detailed feature specs.
+An Electron app that provides a layer over Azure DevOps (AzDO). It provides a consolidated board view across multiple AzDO projects. No server component — the app is self-contained. See `README.md` for key decisions and `feature-specifications/` for detailed feature specs.
 
 ## Behaviour
 

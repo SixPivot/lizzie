@@ -61,10 +61,33 @@ export function buildMappedColumnIds(columns: CombinedBoardColumn[]): Set<string
     const mapped = new Set<string>();
     for (const col of columns) {
         for (const m of col.sourceMappings) {
-            mapped.add(`${m.connectionId}::${m.boardId}::${m.columnId}`);
+            mapped.add(buildBoardColumnKey(m));
         }
     }
     return mapped;
+}
+
+export function buildBoardColumnKey(column: Pick<BoardColumnInfo, "connectionId" | "boardId" | "columnId">): string {
+    return `${column.connectionId}::${column.boardId}::${column.columnId}`;
+}
+
+export function filterAvailableBoardColumns(
+    boardColumns: BoardColumnInfo[],
+    mappedIds: Set<string>,
+    search: string
+): BoardColumnInfo[] {
+    const term = search.toLowerCase();
+    const results = boardColumns.filter((column) => {
+        if (mappedIds.has(buildBoardColumnKey(column))) return false;
+        if (!term) return true;
+        return (
+            column.projectName.toLowerCase().includes(term) ||
+            column.boardName.toLowerCase().includes(term) ||
+            column.columnName.toLowerCase().includes(term)
+        );
+    });
+
+    return results.slice().sort((a, b) => a.columnName.localeCompare(b.columnName));
 }
 
 // ---------------------------------------------------------------------------
@@ -107,19 +130,10 @@ function SourceColumnPicker({ boardColumns, mappedIds, search, onSearchChange, o
         }
     }
 
-    const filtered = useMemo(() => {
-        const term = search.toLowerCase();
-        const results = boardColumns.filter((c) => {
-            if (mappedIds.has(`${c.boardId}::${c.columnId}`)) return false;
-            if (!term) return true;
-            return (
-                c.projectName.toLowerCase().includes(term) ||
-                c.boardName.toLowerCase().includes(term) ||
-                c.columnName.toLowerCase().includes(term)
-            );
-        });
-        return results.slice().sort((a, b) => a.columnName.localeCompare(b.columnName));
-    }, [boardColumns, mappedIds, search]);
+    const filtered = useMemo(
+        () => filterAvailableBoardColumns(boardColumns, mappedIds, search),
+        [boardColumns, mappedIds, search]
+    );
 
     const wrapperClass = inline
         ? "rounded-md border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
@@ -145,7 +159,7 @@ function SourceColumnPicker({ boardColumns, mappedIds, search, onSearchChange, o
                     </li>
                 )}
                 {filtered.map((c) => (
-                    <li key={`${c.boardId}::${c.columnId}`}>
+                    <li key={buildBoardColumnKey(c)}>
                         <button
                             type="button"
                             onClick={() => onSelect(c)}
