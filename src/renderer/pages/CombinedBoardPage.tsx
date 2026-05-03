@@ -430,6 +430,22 @@ export function buildWorkItemCardKey(card: Pick<WorkItemCard, "connectionId" | "
     return `${card.connectionId}::${card.boardId}::${card.id}`;
 }
 
+function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function filterCardsBySearch(cards: WorkItemCard[], query: string): WorkItemCard[] {
+    const trimmed = query.trim();
+    if (!trimmed) return cards;
+    const lower = trimmed.toLowerCase();
+    return cards.filter((card) => {
+        const title = ((card.fields["System.Title"] as string | undefined) ?? "").toLowerCase();
+        const descriptionRaw = (card.fields["System.Description"] as string | undefined) ?? "";
+        const description = stripHtml(descriptionRaw).toLowerCase();
+        return title.includes(lower) || description.includes(lower);
+    });
+}
+
 export function CombinedBoardPage() {
     const connections = useAppStore((s) => s.connections);
     const selectedBoards = useAppStore((s) => s.selectedBoards);
@@ -444,6 +460,15 @@ export function CombinedBoardPage() {
     const [selectedCard, setSelectedCard] = useState<WorkItemCard | null>(null);
     const [failedConnections, setFailedConnections] = useState<string[]>([]);
     const [warningDismissed, setWarningDismissed] = useState(false);
+    const [searchInput, setSearchInput] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchQuery(searchInput);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
 
     const hasConnections = connections.length > 0;
     const hasBoards = selectedBoards.length > 0;
@@ -535,9 +560,10 @@ export function CombinedBoardPage() {
                     .sort((a, b) => a.boardOrder - b.boardOrder);
                 cards.push(...mappingCards);
             });
-            return { column: col, cards, error: null as string | null };
+            const filteredCards = filterCardsBySearch(cards, searchQuery);
+            return { column: col, cards: filteredCards, error: null as string | null };
         });
-    }, [combinedBoardColumns, workItems]);
+    }, [combinedBoardColumns, workItems, searchQuery]);
 
     // Guard states
     if (!hasConnections) {
@@ -605,6 +631,31 @@ export function CombinedBoardPage() {
                     </span>
                 )}
                 <div className="flex-1" />
+                <div className="relative">
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                    >
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                        type="search"
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search cards…"
+                        aria-label="Search cards"
+                        className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 pl-8 pr-3 py-1.5 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                    />
+                </div>
                 <button
                     type="button"
                     disabled={loadState === "loading" || isRefreshing}
