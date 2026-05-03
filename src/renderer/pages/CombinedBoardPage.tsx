@@ -430,6 +430,7 @@ export function buildWorkItemCardKey(card: Pick<WorkItemCard, "connectionId" | "
     return `${card.connectionId}::${card.boardId}::${card.id}`;
 }
 
+// Strips HTML tags for text-only comparison (never rendered, so not an XSS concern).
 function stripHtml(html: string): string {
     return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
